@@ -211,6 +211,28 @@ service cloud.firestore {
         && request.resource.data.sekme in ['duyuru', 'takvim', 'belge', 'soru'];
     }
 
+    // ---------- Kullanım istatistiği (yalnızca sayı; kimlik yok, okumayı yalnızca yönetici yapar) ----------
+    function aktiflikVerisi() {
+      return request.resource.data.keys().hasOnly(['son', 'bostan'])
+        && request.resource.data.son == request.time
+        && request.resource.data.bostan == uye().bostan;
+    }
+    match /aktiflik/{kid} {
+      allow read: if yonetici();
+      allow create: if onayli() && request.auth.uid == kid && aktiflikVerisi();
+      // En fazla dakikada bir güncellenebilir (gereksiz yazma ve maliyet önlemi)
+      allow update: if onayli() && request.auth.uid == kid && aktiflikVerisi()
+        && request.time > resource.data.son + duration.value(60, 's');
+    }
+    match /ziyaretler/{gun}/kisiler/{kid} {
+      allow read: if yonetici();
+      allow create: if onayli() && request.auth.uid == kid
+        && gun.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.keys().hasOnly(['bostan', 'tarih'])
+        && request.resource.data.tarih == request.time
+        && request.resource.data.bostan == uye().bostan;
+    }
+
     // ---------- Bildirim jetonları (yalnızca sunucu okur) ----------
     match /bildirimTokenlari/{uid} {
       allow create, update: if onayli() && request.auth.uid == uid

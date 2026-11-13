@@ -36,6 +36,27 @@ else onAuthStateChanged(auth, async (k) => {
   }, () => katilEkrani());
 });
 
+// ---------- Kullanım istatistiği (yalnızca sayı; ekip kimseyi tanımaz) ----------
+const bugunTR = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
+let sonAktiflik = 0;
+async function aktiflikBildir() {
+  if (onizleme || !uye || uye.durum !== 'onayli' || document.hidden) return;
+  if (Date.now() - sonAktiflik < 65000) return;
+  sonAktiflik = Date.now();
+  try { await setDoc(doc(db, 'aktiflik', uid), { son: serverTimestamp(), bostan: uye.bostan }); } catch (e) {}
+  const gun = bugunTR();
+  let kayitli = '';
+  try { kayitli = localStorage.getItem('bp-ziyaret-gun') || ''; } catch (e) {}
+  if (kayitli !== gun) {
+    try {
+      await setDoc(doc(db, 'ziyaretler', gun, 'kisiler', uid), { bostan: uye.bostan, tarih: serverTimestamp() });
+      localStorage.setItem('bp-ziyaret-gun', gun);
+    } catch (e) { /* bugün zaten kayıtlıysa sorun değil */ try { localStorage.setItem('bp-ziyaret-gun', gun); } catch (er) {} }
+  }
+}
+setInterval(aktiflikBildir, 3 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) aktiflikBildir(); });
+
 // ---------- Yönetici önizlemesi ----------
 function onizlemeBaslat() {
   onizleme = true;
@@ -162,7 +183,7 @@ function uygulamayiAc() {
   $('#bildirimAc').onclick = bildirimAc;
   if (onizleme) $('#bildirimAc').classList.add('gizli');
   setTimeout(() => belgeleriYukle(false, true), 2500); // yeni doküman rozeti için
-  if (!onizleme) sessizTokenYenile();
+  if (!onizleme) { sessizTokenYenile(); aktiflikBildir(); }
   const h = location.hash.replace('#', '');
   sekmeAc(['duyuru', 'takvim', 'belge', 'soru'].includes(h) ? h : 'duyuru');
 }

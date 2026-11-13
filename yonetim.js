@@ -5,6 +5,7 @@ import {
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
+  getDocs, getCountFromServer, Timestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const ana = $('#ana');
@@ -56,7 +57,7 @@ function panelAc() {
   $('#menu').classList.remove('gizli');
   ana.innerHTML = `
     <div class="btnsatir" style="justify-content:flex-end;margin-bottom:8px"><a class="btn kucuk" href="./#duyuru">👁 Kursiyer görünümü</a></div>
-    <section id="b-kursiyer"></section>
+    <section id="b-kursiyer"><div id="kullanimKok"></div><div id="kursiyerKok"></div></section>
     <section id="b-duyuru" class="gizli"></section>
     <section id="b-sorular" class="gizli"></section>
     <section id="b-takvim" class="gizli"></section>
@@ -82,10 +83,56 @@ function rozet(sekmeAdi, sayi) {
 
 // ---------- Kursiyerler ----------
 let uyeler = [], uyeFiltre = { bostan: '', durum: 'onayli', ara: '' };
+// ---------- Kullanım istatistiği ----------
+const gunTR = (d) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
+const KISA_GUN = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+async function kullanimCiz() {
+  const kok = $('#kullanimKok');
+  if (!kok) return;
+  try {
+    const simdi = Date.now();
+    // Şu an açık: son 5 dakikada uygulamayı açık tutanlar
+    const aktif = await getDocs(query(collection(db, 'aktiflik'), where('son', '>=', Timestamp.fromMillis(simdi - 5 * 60000))));
+    const bugun = gunTR(new Date());
+    const bugunDocs = await getDocs(collection(db, 'ziyaretler', bugun, 'kisiler'));
+    const grupla = (docs) => { const g = {}; docs.forEach((d) => (g[d.data().bostan] = (g[d.data().bostan] || 0) + 1)); return g; };
+    const ga = grupla(aktif.docs), gb = grupla(bugunDocs.docs);
+    // Son 7 gün (yalnızca sayım sorgusu, belge okunmaz)
+    const gunler = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(simdi - i * 86400000);
+      const g = gunTR(d);
+      const n = g === bugun ? bugunDocs.size : (await getCountFromServer(collection(db, 'ziyaretler', g, 'kisiler'))).data().count;
+      gunler.push({ etiket: i === 0 ? 'Bugün' : KISA_GUN[new Date(g + 'T12:00:00').getDay()] + ' ' + Number(g.slice(8)), n });
+    }
+    const enCok = Math.max(1, ...gunler.map((x) => x.n));
+    const onayli = uyeler.filter((u) => u.durum === 'onayli').length;
+    const dagilim = (g) => Object.entries(BOSTANLAR).filter(([k]) => g[k]).map(([k, v]) => `${v} ${g[k]}`).join(' · ') || '—';
+    kok.innerHTML = `<h2>Kullanım</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div class="kart" style="margin:0"><div class="yardim" style="margin:0">Şu an açık</div><div style="font-size:30px;font-weight:700;color:var(--yesil)">${aktif.size}</div><small class="yardim">${esc(dagilim(ga))}</small></div>
+        <div class="kart" style="margin:0"><div class="yardim" style="margin:0">Bugün kullanan</div><div style="font-size:30px;font-weight:700">${bugunDocs.size}</div><small class="yardim">${onayli ? '%' + Math.round((bugunDocs.size / onayli) * 100) + ' · ' : ''}${esc(dagilim(gb))}</small></div>
+      </div>
+      <div class="kart"><div class="yardim" style="margin:0 0 8px">Son 7 gün · günlük farklı kullanıcı</div>
+        ${gunler.map((x) => `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px">
+          <span style="width:56px;color:var(--soluk)">${x.etiket}</span>
+          <span style="flex:1;background:var(--yesil-acik);border-radius:4px;height:14px;overflow:hidden"><span style="display:block;height:100%;width:${(x.n / enCok) * 100}%;background:var(--yesil)"></span></span>
+          <b style="width:28px;text-align:right">${x.n}</b></div>`).join('')}
+        <p class="yardim" style="margin-top:8px">"Şu an açık": son 5 dakikada uygulama ekranı açık olanlar. Ekip kimin kullandığını göremez, yalnızca sayıları görür. Yönetici önizlemesi sayılmaz.</p></div>`;
+  } catch (e) {
+    kok.innerHTML = '<div class="kart bos">Kullanım bilgisi alınamadı.</div>';
+  }
+}
+
 function kursiyerBaslat() {
+  kullanimCiz();
+  const t = setInterval(() => { if (!document.hidden && sekme === 'kursiyer') kullanimCiz(); }, 60000);
+  aboneler.push(() => clearInterval(t));
   aboneler.push(onSnapshot(collection(db, 'uyeler'), (s) => {
+    const ilk = !uyeler.length;
     uyeler = s.docs.map((d) => ({ id: d.id, ...d.data() }));
     kursiyerCiz();
+    if (ilk) kullanimCiz();
   }));
 }
 const adAnahtar = (s) => String(s || '').toLocaleLowerCase('tr-TR').replace(/\s+/g, ' ').trim();
@@ -111,7 +158,7 @@ function kursiyerCiz() {
   // Bostana göre grupla
   const gruplar = {};
   liste.forEach((u) => (gruplar[u.bostan] = gruplar[u.bostan] || []).push(u));
-  $('#b-kursiyer').innerHTML = `
+  $('#kursiyerKok').innerHTML = `
     <h2>Onay bekleyenler (${bekleyen.length})</h2>
     ${bekleyen.length ? `<div class="kart" style="padding:4px 12px">${bekleyen.map((u) => `<div class="belge">
         <div class="ic"><b>${esc(u.takmaAd)}</b><small>${esc(bostanAdi(u.bostan))} · ${tarihYaz(u.tarih)}</small>
