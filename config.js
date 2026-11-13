@@ -10,6 +10,6 @@ self.BP_AYAR = {
     appId: '1:845309682928:web:bc1fa005d3de6aa055ce35'
   },
   // Proje ayarları > Cloud Messaging > Web Push sertifikaları > Anahtar çifti
-  vapidKey: '',
+  vapidKey: 'BKje2UGBlsNPi3azfTMLtvm7Qd3xehQv_mXvnNnsscUZcy7gzA_CjSTzjci2eNH0YwmLW43ZYACoNWFKhC4On2s',
   bolge: 'europe-west1'
 };
