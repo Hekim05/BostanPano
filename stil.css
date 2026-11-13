@@ -173,3 +173,5 @@ tr.gecersiz td { background: #fdecea; }
 .bildirim-seridi { display: flex; gap: 10px; align-items: flex-start; background: #fff6e8; border: 1px solid #f1d3a6; border-radius: var(--r); padding: 12px; margin-bottom: 14px; font-size: 14px; }
 .bildirim-seridi .ic { flex: 1; }
 .bildirim-seridi b { display: block; font-size: 15px; margin-bottom: 2px; }
+a.btn { text-decoration: none; color: inherit; }
+a.btn.ana { color: #fff; }

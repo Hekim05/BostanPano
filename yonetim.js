@@ -55,6 +55,7 @@ function panelAc() {
   $("#altBaslik").textContent = "Yönetim · " + ben.email;
   $('#menu').classList.remove('gizli');
   ana.innerHTML = `
+    <div class="btnsatir" style="justify-content:flex-end;margin-bottom:8px"><a class="btn kucuk" href="./#duyuru">👁 Kursiyer görünümü</a></div>
     <section id="b-kursiyer"></section>
     <section id="b-duyuru" class="gizli"></section>
     <section id="b-sorular" class="gizli"></section>

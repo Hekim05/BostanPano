@@ -2,7 +2,7 @@ import {
   APP_VERSION, AYAR, ayarEksik, auth, db, fns, BOSTANLAR, bostanAdi, yasakAd,
   $, $$, esc, toast, tarihYaz, saatBaslat, makaleHtml, videoGomme, sesliOku, Takvim, swKaydet, ayarEksikEkrani,
 } from './ortak.js';
-import { signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { signInAnonymously, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   doc, getDoc, setDoc, collection, query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -12,7 +12,7 @@ const ana = $('#ana');
 saatBaslat($('#saat'));
 const swKayit = swKaydet();
 
-let uid = null, uye = null;
+let uid = null, uye = null, onizleme = false;
 let aboneler = [];
 const kapat = () => { aboneler.forEach((f) => f()); aboneler = []; };
 
@@ -20,6 +20,11 @@ if (ayarEksik) ayarEksikEkrani(ana);
 else onAuthStateChanged(auth, async (k) => {
   if (!k) { try { await signInAnonymously(auth); } catch (e) { ana.innerHTML = '<div class="ortala kart">Bağlantı kurulamadı. İnternetinizi kontrol edip sayfayı yenileyin.</div>'; } return; }
   uid = k.uid;
+  // Yönetici bu cihazda Google ile girmişse: kursiyer görünümü (önizleme)
+  if (!k.isAnonymous) {
+    try { await getDoc(doc(db, 'ayarlar', 'yoneticiler')); return onizlemeBaslat(); }
+    catch (e) { await signOut(auth); return; }
+  }
   // Üyelik durumunu canlı izle (onay / engel anında yansır)
   onSnapshot(doc(db, 'uyeler', uid), (s) => {
     const onceki = uye && uye.durum;
@@ -29,6 +34,29 @@ else onAuthStateChanged(auth, async (k) => {
     if (uye.durum === 'engelli') return engelEkrani();
     if (onceki !== 'onayli') uygulamayiAc();
   }, () => katilEkrani());
+});
+
+// ---------- Yönetici önizlemesi ----------
+function onizlemeBaslat() {
+  onizleme = true;
+  let b = 'mutlukent';
+  try { b = localStorage.getItem('bp-onizleme-bostan') || b; } catch (e) {}
+  uye = { bostan: b, takmaAd: 'Yönetici önizlemesi', durum: 'onayli' };
+  uygulamayiAc();
+}
+function onizlemeSeridi() {
+  if (!onizleme) return '';
+  return `<div class="bildirim-seridi" style="background:#eef4ff;border-color:#bcd0f5"><div style="font-size:22px">👁</div><div class="ic">
+    <b>Kursiyer görünümü (yönetici önizlemesi)</b>Ekranı seçtiğiniz bostanın kursiyeri gibi görüyorsunuz. Yorum, tepki ve soru gönderme kapalı.
+    <div class="btnsatir" style="margin-top:8px"><select id="onizBostan" style="flex:1;min-width:160px">${Object.entries(BOSTANLAR).map(([k, v]) => `<option value="${k}" ${uye.bostan === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+    <a class="btn kucuk" href="yonetim.html">‹ Yönetim paneline dön</a></div></div></div>`;
+}
+document.addEventListener('change', (e) => {
+  if (e.target.id !== 'onizBostan') return;
+  try { localStorage.setItem('bp-onizleme-bostan', e.target.value); } catch (er) {}
+  uye = { ...uye, bostan: e.target.value };
+  belgeVeri = null; belgeYuklendi = 0;
+  uygulamayiAc();
 });
 
 // ---------- Katılma ----------
@@ -122,7 +150,7 @@ function uygulamayiAc() {
   kapat();
   $('#altBaslik').textContent = `${bostanAdi(uye.bostan)} · ${uye.takmaAd}`;
   $('#menu').classList.remove('gizli');
-  ana.innerHTML = `
+  ana.innerHTML = `${onizlemeSeridi()}
     <section id="b-duyuru"></section>
     <section id="b-takvim" class="gizli"><h2>Takvim</h2><div id="takvimKok"></div></section>
     <section id="b-belge" class="gizli"><h2>Eğitim Dokümanları</h2><div id="belgeKok"></div></section>
@@ -132,8 +160,9 @@ function uygulamayiAc() {
   takvimiBaslat();
   soruyuBaslat();
   $('#bildirimAc').onclick = bildirimAc;
+  if (onizleme) $('#bildirimAc').classList.add('gizli');
   setTimeout(() => belgeleriYukle(false, true), 2500); // yeni doküman rozeti için
-  sessizTokenYenile();
+  if (!onizleme) sessizTokenYenile();
   const h = location.hash.replace('#', '');
   sekmeAc(['duyuru', 'takvim', 'belge', 'soru'].includes(h) ? h : 'duyuru');
 }
@@ -206,12 +235,12 @@ function duyurulariCiz() {
         ${uzun ? `<button class="linkbtn" data-ac="${d.id}">${acikMakale.has(d.id) ? 'Daha az göster' : 'Devamını oku'}</button>` : ''}
         ${d.metin ? `<button class="btn kucuk" data-dinle="${d.id}">🔊 Dinle</button>` : ''}
       </div>
-      <div class="tepkiler">${EMOJILER.map((em) => `<button class="tepki ${benim === em ? 'secili' : ''}" data-tepki="${em}" data-did="${d.id}" aria-label="${em} tepkisi">${em}${say[em] > 0 ? `<small>${say[em]}</small>` : ''}</button>`).join('')}</div>
+      <div class="tepkiler">${EMOJILER.map((em) => `<button class="tepki ${benim === em ? 'secili' : ''}" ${onizleme ? 'disabled' : ''} data-tepki="${em}" data-did="${d.id}" aria-label="${em} tepkisi">${em}${say[em] > 0 ? `<small>${say[em]}</small>` : ''}</button>`).join('')}</div>
       ${d.yorumAcik ? `<button class="linkbtn" data-yorumac="${d.id}">💬 Yorumlar (${Math.max(0, d.yorumSayisi || 0)})</button>
         <div class="yorumlar ${acikYorum.has(d.id) ? '' : 'gizli'}" id="y-${d.id}"><div class="yliste"></div>
-          <label for="yt-${d.id}">Yorumunuz <small style="font-weight:400;color:var(--soluk)">(${esc(uye.takmaAd)} olarak)</small></label>
+          ${onizleme ? '' : `<label for="yt-${d.id}">Yorumunuz <small style="font-weight:400;color:var(--soluk)">(${esc(uye.takmaAd)} olarak)</small></label>
           <textarea id="yt-${d.id}" data-yorum="${d.id}" maxlength="500" style="min-height:70px">${esc(taslak[d.id] || '')}</textarea>
-          <button class="btn ana kucuk" data-yorumgonder="${d.id}" style="margin-top:6px">Gönder</button></div>` : ''}
+          <button class="btn ana kucuk" data-yorumgonder="${d.id}" style="margin-top:6px">Gönder</button>`}</div>` : ''}
     </article>`;
   }).join('');
   acikYorum.forEach((did) => yorumlariCiz(did));
@@ -302,7 +331,8 @@ async function belgeleriYukle(zorla, sessiz) {
   if (!zorla && belgeVeri && Date.now() - belgeYuklendi < 120000) { if (!sessiz) belgeCiz(); return; }
   if (!sessiz) kok.innerHTML = '<div class="bos">Dokümanlar yükleniyor…</div>';
   try {
-    const { data } = await httpsCallable(fns, 'belgeler')();
+    let { data } = await httpsCallable(fns, 'belgeler')();
+    if (onizleme) data = data.filter((b) => b.bolum === 'genel' || b.bolum === uye.bostan);
     belgeYuklendi = Date.now(); belgeVeri = data;
     rozetleriGuncelle();
     if (sessiz && sekme !== 'belge') return;
@@ -349,6 +379,11 @@ document.addEventListener('click', async (e) => {
 let konu = null, mesajlar = [];
 function soruyuBaslat() {
   const k = $('#b-soru');
+  if (onizleme) {
+    k.innerHTML = `<h2>Soru Sor</h2><div class="bilgi">Kursiyer bu bölümde ekibe birebir soru yazar ve cevapları burada görür. Diğer kursiyerler bu yazışmayı göremez. Gelen sorular yönetim panelindeki <b>Sorular</b> sekmesine düşer.</div>
+      <div class="kart" style="margin-top:12px;opacity:.6"><label style="margin-top:0">Sorunuz</label><textarea disabled placeholder="Önizlemede soru gönderilemez"></textarea></div>`;
+    return;
+  }
   k.innerHTML = `<h2>Soru Sor</h2>
     <div class="bilgi" style="margin-bottom:12px">🔒 Yazdıklarınızı yalnızca Bostan Pano Ekibi görür. Diğer kursiyerler göremez.</div>
     <div class="sohbet" id="sohbet"></div>
@@ -426,6 +461,7 @@ function ertele(ad, gun) { try { localStorage.setItem('bp-ertele-' + ad, String(
 function seritCiz() {
   const kok = $('#seritKok');
   if (!kok) return;
+  if (onizleme) { kok.innerHTML = ''; return; }
   let html = '';
   const bildirimVar = !!AYAR.vapidKey;
   if (iOS && !yuklu && !ertelendi('ios')) {
