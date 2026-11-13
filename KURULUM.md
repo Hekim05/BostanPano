@@ -55,7 +55,7 @@ Ardından *Settings → Authorized domains → Add domain*: `hekim05.github.io`
 Diğer yöneticileri (en fazla 6 kişi) sonradan panelin **Ayarlar** bölümünden eklersiniz.
 
 ## 7. Güvenlik kuralları ve sunucu fonksiyonları (bilgisayarda, bir kez)
-Gerekenler: Node.js 20 (https://nodejs.org) ve Git.
+Gerekenler: Node.js 22 veya üstü (https://nodejs.org) ve Git.
 
 ```bash
 npm install -g firebase-tools
