@@ -4,7 +4,7 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-aut
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
-export const APP_VERSION = '2026.11.14-1';
+export const APP_VERSION = '2026.11.14-2';
 export const AYAR = self.BP_AYAR || {};
 export const ayarEksik = !AYAR.firebase || !AYAR.firebase.apiKey || !AYAR.firebase.projectId;
 
@@ -22,6 +22,9 @@ export const BOSTANLAR = {
   cigdem: 'Çiğdem Emekli Kampüsü',
   alacaatli: 'Alacaatlı',
 };
+// Ekip / resmi kimlik taklidine izin verilmeyen takma adlar (kurallarda da aynı denetim var)
+const YASAK_DESEN = /(ek.{1,2}p|y[oö]net|adm|pano|moderat|resm|beled|g[oö]revl|personel|m[uü]hend)/;
+export const yasakAd = (ad) => YASAK_DESEN.test(String(ad).toLocaleLowerCase('tr-TR'));
 export const bostanAdi = (b) => (b === 'hepsi' ? 'Tüm bostanlar' : BOSTANLAR[b] || b);
 
 // ---------- Yardımcılar ----------
