@@ -1,0 +1,218 @@
+rules_version = '2';
+
+// Bostan Pano — Firestore güvenlik kuralları
+// İlke: varsayılan olarak her şey kapalı; yalnızca aşağıda açıkça izin verilen işlemler yapılabilir.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Yardımcılar ----------
+    function girisli() { return request.auth != null; }
+
+    function yoneticiListesi() {
+      return get(/databases/$(database)/documents/ayarlar/yoneticiler).data;
+    }
+
+    // Yönetici: Google ile giriş yapmış, e-postası doğrulanmış ve listede olan kişi
+    function yonetici() {
+      return girisli()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in yoneticiListesi().emailler;
+    }
+
+    function sahip() {
+      return yonetici() && request.auth.token.email == yoneticiListesi().sahip;
+    }
+
+    function uyeYolu() { return /databases/$(database)/documents/uyeler/$(request.auth.uid); }
+    function uye() { return get(uyeYolu()).data; }
+
+    // Onaylı kursiyer
+    function onayli() {
+      return girisli() && exists(uyeYolu()) && uye().durum == 'onayli';
+    }
+
+    function bostanGecerli(b) {
+      return b in ['mutlukent', 'atabostan', 'cigdem', 'alacaatli'];
+    }
+
+    function hedefGecerli(b) { return b == 'hepsi' || bostanGecerli(b); }
+
+    function metin(s, enAz, enCok) {
+      return s is string && s.size() >= enAz && s.size() <= enCok;
+    }
+
+    // Spam koruması: kursiyer her yazışta kendi sonYazma alanını aynı toplu işlemde günceller;
+    // iki yazma arasında en az 20 saniye olmalı.
+    function yazmaAraligiUygun() {
+      let once = get(uyeYolu()).data;
+      let sonra = getAfter(uyeYolu()).data;
+      return sonra.sonYazma == request.time
+        && (!('sonYazma' in once) || request.time > once.sonYazma + duration.value(20, 's'));
+    }
+
+    // ---------- Ayarlar ----------
+    match /ayarlar/yoneticiler {
+      allow read: if yonetici();
+      // Yalnızca sahip değiştirebilir; en fazla 6 yönetici; sahip değiştirilemez ve listeden çıkarılamaz
+      allow update: if sahip()
+        && request.resource.data.sahip == resource.data.sahip
+        && request.resource.data.emailler is list
+        && request.resource.data.emailler.size() <= 6
+        && resource.data.sahip in request.resource.data.emailler;
+    }
+
+    // Bostan giriş kodları: kursiyer asla okuyamaz
+    match /bostanKodlari/{bostan} {
+      allow read: if yonetici();
+      allow write: if yonetici() && bostanGecerli(bostan)
+        && request.resource.data.keys().hasOnly(['kod'])
+        && metin(request.resource.data.kod, 5, 30);
+    }
+
+    // ---------- Üyeler (kursiyer kayıtları) ----------
+    match /uyeler/{uid} {
+      // Kursiyer yalnızca kendi kaydını görür; kimse diğer kursiyerleri listeleyemez
+      allow get: if girisli() && request.auth.uid == uid;
+      allow read: if yonetici();
+
+      // Katılma başvurusu: doğru bostan kodu + takma ad, durum her zaman "bekliyor"
+      allow create: if girisli() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['bostan', 'takmaAd', 'kod', 'durum', 'tarih'])
+        && bostanGecerli(request.resource.data.bostan)
+        && request.resource.data.takmaAd is string
+        && request.resource.data.takmaAd.matches('^[A-Za-zÇĞİÖŞÜçğıöşü0-9 ]{2,20}$')
+        && request.resource.data.durum == 'bekliyor'
+        && request.resource.data.tarih == request.time
+        && exists(/databases/$(database)/documents/bostanKodlari/$(request.resource.data.bostan))
+        && request.resource.data.kod == get(/databases/$(database)/documents/bostanKodlari/$(request.resource.data.bostan)).data.kod;
+
+      // Kursiyer yalnızca sonYazma alanını (spam sayacı) güncelleyebilir
+      allow update: if (
+          girisli() && request.auth.uid == uid && resource.data.durum == 'onayli'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sonYazma'])
+          && request.resource.data.sonYazma == request.time
+        ) || (
+          // Yönetici yalnızca durumu değiştirir
+          yonetici()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['durum'])
+          && request.resource.data.durum in ['bekliyor', 'onayli', 'engelli']
+        );
+
+      allow delete: if yonetici();
+    }
+
+    // ---------- Duyurular ----------
+    function duyuruGorunur(d) {
+      return d.bostan == 'hepsi' || d.bostan == uye().bostan;
+    }
+
+    match /duyurular/{did} {
+      allow read: if yonetici() || (onayli() && duyuruGorunur(resource.data));
+      allow create, update: if yonetici()
+        && request.resource.data.keys().hasOnly(['baslik', 'ozet', 'metin', 'video', 'bostan', 'tarih', 'yorumAcik', 'sabit', 'tepkiler', 'yorumSayisi'])
+        && metin(request.resource.data.baslik, 2, 150)
+        && metin(request.resource.data.metin, 0, 60000)
+        && hedefGecerli(request.resource.data.bostan)
+        && request.resource.data.yorumAcik is bool;
+      allow delete: if yonetici();
+
+      function duyuru() { return get(/databases/$(database)/documents/duyurular/$(did)).data; }
+
+      // Emoji tepkileri: belge kimliği = kursiyerin anonim kimliği, kişi başı tek tepki
+      match /tepkiler/{uid} {
+        allow read: if yonetici() || (onayli() && duyuruGorunur(duyuru()));
+        allow create, update: if onayli() && request.auth.uid == uid && duyuruGorunur(duyuru())
+          && request.resource.data.keys().hasOnly(['emoji'])
+          && request.resource.data.emoji in ['👍', '❤️', '🌱', '👏', '🙏', '😊'];
+        allow delete: if (onayli() && request.auth.uid == uid) || yonetici();
+      }
+
+      // Yorumlar: takma adla görünür; kursiyer yalnızca kendi yorumunu silebilir; düzenleme yok
+      match /yorumlar/{yid} {
+        allow read: if yonetici() || (onayli() && duyuruGorunur(duyuru()));
+        allow create: if onayli() && duyuruGorunur(duyuru()) && duyuru().yorumAcik == true
+          && request.resource.data.keys().hasOnly(['uid', 'takmaAd', 'bostan', 'metin', 'tarih'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.takmaAd == uye().takmaAd
+          && request.resource.data.bostan == uye().bostan
+          && metin(request.resource.data.metin, 1, 500)
+          && request.resource.data.tarih == request.time
+          && yazmaAraligiUygun();
+        allow delete: if yonetici() || (onayli() && resource.data.uid == request.auth.uid);
+      }
+    }
+
+    // ---------- Soru Sor (kursiyer ↔ ekip, birebir) ----------
+    match /sorular/{kid} {
+      allow get: if yonetici() || (onayli() && request.auth.uid == kid);
+      allow list: if yonetici();
+
+      // Kursiyer kendi konuşma başlığını oluşturur / günceller
+      allow create, update: if (
+          onayli() && request.auth.uid == kid
+          && request.resource.data.keys().hasOnly(['takmaAd', 'bostan', 'sonMesaj', 'sonTarih', 'ekipOkudu', 'kursiyerOkudu'])
+          && request.resource.data.takmaAd == uye().takmaAd
+          && request.resource.data.bostan == uye().bostan
+          && metin(request.resource.data.sonMesaj, 0, 120)
+          && request.resource.data.sonTarih == request.time
+        ) || (
+          // Kursiyer ekibin cevabını okudu olarak işaretler
+          onayli() && request.auth.uid == kid && resource != null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kursiyerOkudu'])
+        ) || (
+          yonetici() && resource != null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sonMesaj', 'sonTarih', 'ekipOkudu', 'kursiyerOkudu'])
+        );
+      allow delete: if yonetici();
+
+      match /mesajlar/{mid} {
+        allow read: if yonetici() || (onayli() && request.auth.uid == kid);
+        allow create: if (
+            onayli() && request.auth.uid == kid
+            && request.resource.data.keys().hasOnly(['kimden', 'metin', 'tarih'])
+            && request.resource.data.kimden == 'kursiyer'
+            && metin(request.resource.data.metin, 1, 1000)
+            && request.resource.data.tarih == request.time
+            && yazmaAraligiUygun()
+          ) || (
+            yonetici()
+            && request.resource.data.keys().hasOnly(['kimden', 'metin', 'tarih'])
+            && request.resource.data.kimden == 'ekip'
+            && metin(request.resource.data.metin, 1, 4000)
+            && request.resource.data.tarih == request.time
+          );
+        // Kursiyer yalnızca kendi yazdığı mesajı silebilir
+        allow delete: if yonetici()
+          || (onayli() && request.auth.uid == kid && resource.data.kimden == 'kursiyer');
+      }
+    }
+
+    // ---------- Takvim ----------
+    match /etkinlikler/{eid} {
+      allow read: if yonetici()
+        || (onayli() && (resource.data.bostan == 'hepsi' || resource.data.bostan == uye().bostan));
+      allow create, update: if yonetici()
+        && request.resource.data.keys().hasOnly(['baslik', 'tarih', 'saat', 'bitis', 'bostan', 'tur', 'yer', 'aciklama'])
+        && metin(request.resource.data.baslik, 2, 150)
+        && request.resource.data.tarih.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && hedefGecerli(request.resource.data.bostan);
+      allow delete: if yonetici();
+    }
+
+    // ---------- Bildirim jetonları (yalnızca sunucu okur) ----------
+    match /bildirimTokenlari/{uid} {
+      allow create, update: if onayli() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['token', 'bostan', 'tarih'])
+        && request.resource.data.bostan == uye().bostan
+        && metin(request.resource.data.token, 20, 4096);
+      allow delete: if girisli() && request.auth.uid == uid;
+    }
+
+    match /yoneticiTokenlari/{uid} {
+      allow create, update: if yonetici() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['token', 'email', 'tarih'])
+        && metin(request.resource.data.token, 20, 4096);
+      allow delete: if girisli() && request.auth.uid == uid;
+    }
+  }
+}

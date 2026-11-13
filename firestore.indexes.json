@@ -1,0 +1,7 @@
+{
+  "indexes": [
+    { "collectionGroup": "duyurular", "queryScope": "COLLECTION",
+      "fields": [ { "fieldPath": "bostan", "order": "ASCENDING" }, { "fieldPath": "tarih", "order": "DESCENDING" } ] }
+  ],
+  "fieldOverrides": []
+}
