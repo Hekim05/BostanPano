@@ -35,15 +35,14 @@ Ardından *Settings → Authorized domains → Add domain*: `hekim05.github.io`
 3. Proje ayarları → *Genel* bölümündeki **Proje numarasını** (yalnızca rakamlardan oluşur) not edin.
 
 ## 5. Google Drive klasörü
-1. Drive'da `Bostan Pano Dokümanları` adında bir klasör açın. İçine şu **beş alt klasörü** oluşturun:
-   `Genel`, `Mutlukent`, `Ata Bostan`, `Çiğdem Emekli Kampüsü`, `Alacaatlı`
+1. ✅ Klasörler hazır: Drive'ınızda **Bostan Pano Dokümanları** klasörü ve içinde `Genel`, `Mutlukent`, `Ata Bostan`, `Çiğdem Emekli Kampüsü`, `Alacaatlı` alt klasörleri var. Klasör kimliği uygulamaya işlendi.
    - *Genel* klasöründeki dosyaları herkes görür. Bostan klasörlerindekileri yalnızca o bostanın kursiyerleri görür.
+   - Alt klasörlerin adlarını değiştirmeyin; uygulama klasörleri adlarından tanıyor.
 2. Ana klasörü **Paylaş** ile şu adrese *Görüntüleyen* yetkisiyle açın:
    `PROJE-NUMARASI-compute@developer.gserviceaccount.com`
    (PROJE-NUMARASI yerine 4. adımdaki numarayı yazın.)
    Klasörü "bağlantıya sahip olan herkes" şeklinde paylaşmayın. Gerek yok, dosyalar gizli kalır.
-3. Klasörün adres çubuğundaki `folders/` ifadesinden sonra gelen kısmı (klasör kimliği) Claude'a gönderin.
-4. Drive API'yi açın: https://console.cloud.google.com/apis/library/drive.googleapis.com → projeyi seçin → **Enable**.
+3. Drive API'yi açın: https://console.cloud.google.com/apis/library/drive.googleapis.com → projeyi seçin → **Enable**.
 
 ## 6. İlk yönetici
 *Firestore Database → Start collection*
@@ -67,8 +66,6 @@ firebase use --add                  # listeden bostan-pano projesini seçin, tak
 cd functions
 npm install
 ```
-
-`functions/.env` dosyasını açın. `BURAYA_KLASOR_KIMLIGI` yazan yere 5. adımdaki klasör kimliğini yazın. Sonra:
 
 ```bash
 cd ..
