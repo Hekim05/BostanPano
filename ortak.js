@@ -4,7 +4,7 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-aut
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
-export const APP_VERSION = '2026.11.13-1';
+export const APP_VERSION = '2026.11.14-1';
 export const AYAR = self.BP_AYAR || {};
 export const ayarEksik = !AYAR.firebase || !AYAR.firebase.apiKey || !AYAR.firebase.projectId;
 
@@ -201,7 +201,7 @@ export class Takvim {
     if (!liste.length) return '<div class="bos">Etkinlik yok.</div>';
     return liste.map((e) => `<div class="etkinlik ${e.bostan}">
       <div class="zaman">${esc(e.saat || 'Gün boyu')}${e.bitis ? '<br><small>' + esc(e.bitis) + '</small>' : ''}</div>
-      <div class="ic"><b>${esc(e.baslik)}</b>
+      <div class="ic">${e.yeni ? '<span class="yeni-etiket">Yeni</span> ' : ''}<b>${esc(e.baslik)}</b>
         <small>${esc(e.tur || '')}${e.tur ? ' · ' : ''}${esc(bostanAdi(e.bostan))}${e.yer ? ' · ' + esc(e.yer) : ''}</small>
         ${e.aciklama ? `<div style="font-size:14px;margin-top:4px">${esc(e.aciklama)}</div>` : ''}
         ${this.yonetici ? `<div class="btnsatir" style="margin-top:6px"><button class="btn kucuk" data-duzenle="${e.id}">Düzenle</button><button class="btn kucuk tehlike" data-sil="${e.id}">Sil</button></div>` : ''}

@@ -1,17 +1,18 @@
+/* Renkler Güz Rehberi ile aynıdır (birleştirmeye hazırlık) */
 :root {
-  --yesil: #1d7a3a;
-  --yesil-koyu: #155c2b;
-  --yesil-acik: #e8f3eb;
-  --turuncu: #e8901a;
-  --metin: #1f2a22;
-  --soluk: #66726a;
-  --cizgi: #dfe5e0;
-  --zemin: #f5f7f5;
+  --yesil: #157a38;
+  --yesil-koyu: #0f5a29;
+  --yesil-acik: #e8f3ec;
+  --turuncu: #e08a12;
+  --metin: #15211a;
+  --soluk: #5d6b63;
+  --cizgi: #d6e0d9;
+  --zemin: #f6f8f6;
   --kart: #ffffff;
   --kirmizi: #b3261e;
-  --golge: 0 1px 2px rgba(0,0,0,.06), 0 1px 6px rgba(0,0,0,.04);
+  --golge: 0 1px 2px rgba(16,40,26,.06), 0 4px 14px rgba(16,40,26,.05);
   --r: 10px;
-  --c-mutlukent: #1d7a3a;
+  --c-mutlukent: #157a38;
   --c-atabostan: #2f6fb5;
   --c-cigdem: #a0559a;
   --c-alacaatli: #c06a12;
@@ -165,3 +166,10 @@ tr.gecersiz td { background: #fdecea; }
 
 .toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: #263238; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 14px; z-index: 50; max-width: 90vw; }
 .alt-bilgi { text-align: center; font-size: 12px; color: var(--soluk); margin-top: 24px; }
+
+/* Yenilik göstergeleri */
+.yeni-etiket { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .3px; padding: 1px 7px; border-radius: 999px; background: var(--turuncu); color: #fff; vertical-align: middle; }
+.kart.yeni { box-shadow: 0 0 0 2px var(--turuncu), var(--golge); }
+.bildirim-seridi { display: flex; gap: 10px; align-items: flex-start; background: #fff6e8; border: 1px solid #f1d3a6; border-radius: var(--r); padding: 12px; margin-bottom: 14px; font-size: 14px; }
+.bildirim-seridi .ic { flex: 1; }
+.bildirim-seridi b { display: block; font-size: 15px; margin-bottom: 2px; }

@@ -101,6 +101,17 @@ Yönetici olmayan ikinci bir telefonla şunları deneyin:
 - **Yeni sezon:** *Ayarlar*'dan bostan kodlarını değiştirin. Mevcut üyeler etkilenmez.
 - **Kursiyer telefon değiştirirse:** Kodu yeniden girip istek gönderir, siz onaylarsınız. Eski kaydı *Kursiyerler* bölümünden silebilirsiniz.
 
+## Yenilikler ve bildirimler
+- **Uygulama içinde:** Kursiyer son bakışından sonra eklenen duyuru, takvim etkinliği ve dokümanları sekme üzerinde sayı rozeti ve içerikte turuncu **Yeni** etiketiyle görür.
+- **Telefona bildirim** şu durumlarda gider:
+  - yeni duyuru yayınlandığında,
+  - takvime etkinlik eklendiğinde (formdaki "Kursiyerlere bildirim gönder" kutusu işaretliyse; Excel/Word aktarımında her bostana tek bildirim),
+  - Drive'a yeni doküman konduğunda (07:00–22:00 arası saatte bir kontrol edilir),
+  - sorusuna cevap verildiğinde.
+- Yöneticilere yeni soru geldiğinde bildirim gider.
+- **Android:** Chrome'da kursiyere "Yükle" ve "Bildirimleri aç" önerileri çıkar.
+- **iPhone (iOS 16.4 ve üstü):** Bildirim gelmesi için uygulamanın Safari'de **Paylaş → Ana Ekrana Ekle** ile eklenmesi ve ana ekrandaki simgeden açılması gerekir. Uygulama iPhone'da bu adımı kendisi tarif eder.
+
 ## Gizlilik özeti
 - Kursiyerden ad, telefon ya da e-posta alınmaz. Yalnızca takma ad ve bostan bilgisi tutulur.
 - Kursiyerler birbirini listeleyemez ve birbirine mesaj gönderemez. Yorumlarda yalnızca takma ad görünür.

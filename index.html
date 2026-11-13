@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1d7a3a">
+<meta name="theme-color" content="#157a38">
 <meta name="robots" content="noindex">
 <title>Bostan Pano</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -117,7 +117,37 @@ function engelEkrani() {
 }
 
 // ---------- Uygulama ----------
-let sekme = 'duyuru';
+let sekme = null;
+
+// ---------- Yenilikler: son görülme zamanları (cihazda) ----------
+const GORULEN = 'bp-gorulen';
+let gorulen;
+try { gorulen = JSON.parse(localStorage.getItem(GORULEN)); } catch (e) {}
+if (!gorulen || typeof gorulen !== 'object') { const n = Date.now(); gorulen = { duyuru: n, takvim: n, belge: n }; }
+const onceki = { ...gorulen };
+function gorulenKaydet() { try { localStorage.setItem(GORULEN, JSON.stringify(gorulen)); } catch (e) {} }
+gorulenKaydet();
+const msOf = (t) => (t && t.seconds ? t.seconds * 1000 : t ? Date.parse(t) || 0 : 0);
+// Uygulama arka plana geçince açık sekme görülmüş sayılır; geri gelince yeni gelenler işaretlenir
+document.addEventListener('visibilitychange', () => {
+  if (!sekme || !(sekme in gorulen)) return;
+  if (document.hidden) { gorulen[sekme] = Date.now(); gorulenKaydet(); }
+  else { onceki[sekme] = gorulen[sekme]; if (sekme === 'duyuru') duyurulariCiz(); if (sekme === 'takvim') takvimVer(); if (sekme === 'belge') belgeleriYukle(true); }
+});
+function rozetYaz(s, n) {
+  const btn = $(`#menu [data-sekme="${s}"]`);
+  if (!btn) return;
+  btn.querySelector('.rozet')?.remove();
+  if (n > 0) btn.insertAdjacentHTML('beforeend', `<span class="rozet">${n > 9 ? '9+' : n}</span>`);
+}
+function rozetleriGuncelle() {
+  const say = {
+    duyuru: duyurular.filter((d) => msOf(d.tarih) > gorulen.duyuru).length,
+    takvim: etkinlikler.filter((e) => msOf(e.eklenme) > gorulen.takvim).length,
+    belge: belgeVeri ? belgeVeri.reduce((t, b) => t + b.dosyalar.filter((f) => msOf(f.tarih) > gorulen.belge).length, 0) : 0,
+  };
+  Object.entries(say).forEach(([s, n]) => rozetYaz(s, s === sekme ? 0 : n));
+}
 const bolumler = {};
 
 function uygulamayiAc() {
@@ -134,17 +164,25 @@ function uygulamayiAc() {
   takvimiBaslat();
   soruyuBaslat();
   $('#bildirimAc').onclick = bildirimAc;
+  setTimeout(() => belgeleriYukle(false, true), 2500); // yeni doküman rozeti için
+  sessizTokenYenile();
   const h = location.hash.replace('#', '');
   sekmeAc(['duyuru', 'takvim', 'belge', 'soru'].includes(h) ? h : 'duyuru');
 }
 
 $$('#menu button').forEach((b) => (b.onclick = () => sekmeAc(b.dataset.sekme)));
 function sekmeAc(s) {
+  if (sekme && sekme !== s && s in gorulen) gorulen[sekme] = Date.now();
+  if (s in gorulen) { onceki[s] = gorulen[s]; gorulen[s] = Date.now(); }
+  gorulenKaydet();
   sekme = s;
   $$('#menu button').forEach((b) => b.classList.toggle('aktif', b.dataset.sekme === s));
   ['duyuru', 'takvim', 'belge', 'soru'].forEach((x) => $('#b-' + x) && $('#b-' + x).classList.toggle('gizli', x !== s));
   if (s === 'belge') belgeleriYukle();
   if (s === 'soru') okunduIsaretle();
+  if (s === 'duyuru') duyurulariCiz();
+  if (s === 'takvim') takvimVer();
+  rozetleriGuncelle();
   history.replaceState(null, '', '#' + s);
   window.scrollTo(0, 0);
 }
@@ -176,21 +214,23 @@ function duyurulariBaslat() {
   ikiliDinle('duyurular', [orderBy('tarih', 'desc'), limit(30)], (liste) => {
     duyurular = liste.sort((a, b) => (b.sabit ? 1 : 0) - (a.sabit ? 1 : 0) || (b.tarih?.seconds || 0) - (a.tarih?.seconds || 0));
     duyurulariCiz();
+    rozetleriGuncelle();
   });
 }
 
 function duyurulariCiz() {
   const k = bolumler.duyuru;
-  if (!duyurular.length) { k.innerHTML = '<h2>Duyurular</h2><div class="kart bos">Henüz duyuru yok.</div>'; return; }
+  if (!duyurular.length) { k.innerHTML = '<h2>Duyurular</h2><div id="seritKok"></div><div class="kart bos">Henüz duyuru yok.</div>'; seritCiz(); return; }
   // Açık yorum kutularındaki yazıyı koru
   const taslak = {};
   $$('textarea[data-yorum]', k).forEach((t) => (taslak[t.dataset.yorum] = t.value));
-  k.innerHTML = '<h2>Duyurular</h2>' + duyurular.map((d) => {
+  k.innerHTML = '<h2>Duyurular</h2><div id="seritKok"></div>' + duyurular.map((d) => {
     const uzun = (d.metin || '').length > 400;
     const benim = benimTepkim(d.id);
     const say = d.tepkiler || {};
-    return `<article class="kart ${d.sabit ? 'sabit' : ''}" data-id="${d.id}">
-      <div class="ustsatir">${d.sabit ? '<span>📌 Sabit</span>' : ''}<span class="etiket ${d.bostan}">${esc(bostanAdi(d.bostan))}</span><span>${tarihYaz(d.tarih)}</span></div>
+    const yeni = msOf(d.tarih) > onceki.duyuru;
+    return `<article class="kart ${d.sabit ? 'sabit' : ''} ${yeni ? 'yeni' : ''}" data-id="${d.id}">
+      <div class="ustsatir">${yeni ? '<span class="yeni-etiket">Yeni</span>' : ''}${d.sabit ? '<span>📌 Sabit</span>' : ''}<span class="etiket ${d.bostan}">${esc(bostanAdi(d.bostan))}</span><span>${tarihYaz(d.tarih)}</span></div>
       <h3>${esc(d.baslik)}</h3>
       ${videoGomme(d.video)}
       ${d.metin ? `<div class="makale ${uzun && !acikMakale.has(d.id) ? 'kisa' : ''}">${makaleHtml(d.metin)}</div>` : ''}
@@ -207,6 +247,7 @@ function duyurulariCiz() {
     </article>`;
   }).join('');
   acikYorum.forEach((did) => yorumlariCiz(did));
+  seritCiz();
 }
 
 function yorumlariDinle(did) {
@@ -264,14 +305,19 @@ document.addEventListener('click', async (e) => {
 });
 
 // ---------- Takvim ----------
+let etkinlikler = [], takvimNesne = null;
 function takvimiBaslat() {
-  const t = new Takvim($('#takvimKok'));
-  t.ciz();
-  ikiliDinle('etkinlikler', [], (liste) => t.ver(liste));
+  takvimNesne = new Takvim($('#takvimKok'));
+  takvimNesne.ciz();
+  ikiliDinle('etkinlikler', [], (liste) => { etkinlikler = liste; takvimVer(); rozetleriGuncelle(); });
+}
+function takvimVer() {
+  if (!takvimNesne) return;
+  takvimNesne.ver(etkinlikler.map((e) => ({ ...e, yeni: msOf(e.eklenme) > onceki.takvim })));
 }
 
 // ---------- Dokümanlar ----------
-let belgeYuklendi = 0;
+let belgeYuklendi = 0, belgeVeri = null;
 const TUR = (m, ad) => {
   if (/pdf/.test(m)) return ['pdf', 'PDF'];
   if (/word|document/.test(m)) return ['doc', 'DOC'];
@@ -283,22 +329,30 @@ const TUR = (m, ad) => {
 };
 const boyutYaz = (b) => (b == null ? '' : b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
 
-async function belgeleriYukle(zorla) {
+async function belgeleriYukle(zorla, sessiz) {
   const kok = $('#belgeKok');
-  if (!zorla && Date.now() - belgeYuklendi < 120000) return;
-  kok.innerHTML = '<div class="bos">Dokümanlar yükleniyor…</div>';
+  if (!zorla && belgeVeri && Date.now() - belgeYuklendi < 120000) { if (!sessiz) belgeCiz(); return; }
+  if (!sessiz) kok.innerHTML = '<div class="bos">Dokümanlar yükleniyor…</div>';
   try {
     const { data } = await httpsCallable(fns, 'belgeler')();
-    belgeYuklendi = Date.now();
+    belgeYuklendi = Date.now(); belgeVeri = data;
+    rozetleriGuncelle();
+    if (sessiz && sekme !== 'belge') return;
+    belgeCiz();
+  } catch (e) {
+    if (!sessiz) kok.innerHTML = '<div class="kart">Dokümanlar şu an alınamadı. Biraz sonra tekrar deneyin.</div>';
+  }
+}
+function belgeCiz() {
+  const kok = $('#belgeKok'), data = belgeVeri;
+  {
     if (!data.length || data.every((b) => !b.dosyalar.length)) { kok.innerHTML = '<div class="kart bos">Henüz doküman eklenmemiş.</div>'; return; }
     kok.innerHTML = data.filter((b) => b.dosyalar.length).map((b) => `<div class="kart"><h3 style="margin-top:0">${b.bolum === 'genel' ? 'Genel' : esc(bostanAdi(b.bolum))}</h3>
       ${b.dosyalar.map((f) => { const [s, y] = TUR(f.tur, f.ad); return `<div class="belge"><div class="tur ${s}">${y}</div>
-        <div class="ic"><b>${esc(f.ad)}</b><small>${tarihYaz(f.tarih, false)}${f.boyut ? ' · ' + boyutYaz(f.boyut) : ''}</small></div>
+        <div class="ic"><b>${msOf(f.tarih) > onceki.belge ? '<span class="yeni-etiket">Yeni</span> ' : ''}${esc(f.ad)}</b><small>${tarihYaz(f.tarih, false)}${f.boyut ? ' · ' + boyutYaz(f.boyut) : ''}</small></div>
         <button class="btn kucuk" data-indir="${f.id}" data-ad="${esc(f.ad)}">İndir</button></div>`; }).join('')}</div>`).join('') +
       '<button class="btn kucuk" id="belgeYenile">↻ Listeyi yenile</button>';
     $('#belgeYenile').onclick = () => belgeleriYukle(true);
-  } catch (e) {
-    kok.innerHTML = '<div class="kart">Dokümanlar şu an alınamadı. Biraz sonra tekrar deneyin.</div>';
   }
 }
 
@@ -390,19 +444,69 @@ async function okunduIsaretle() {
   }
 }
 
-// ---------- Bildirimler ----------
+// ---------- Bildirimler ve yükleme ----------
+const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const yuklu = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let yuklemeIstegi = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); yuklemeIstegi = e; seritCiz(); });
+window.addEventListener('appinstalled', () => { yuklemeIstegi = null; seritCiz(); });
+
+function ertelendi(ad) { try { return Date.now() < Number(localStorage.getItem('bp-ertele-' + ad) || 0); } catch (e) { return false; } }
+function ertele(ad, gun) { try { localStorage.setItem('bp-ertele-' + ad, String(Date.now() + gun * 86400000)); } catch (e) {} seritCiz(); }
+
+// Duyurular sayfasının üstündeki yönlendirme şeridi
+function seritCiz() {
+  const kok = $('#seritKok');
+  if (!kok) return;
+  let html = '';
+  const bildirimVar = !!AYAR.vapidKey;
+  if (iOS && !yuklu && !ertelendi('ios')) {
+    html = `<div class="bildirim-seridi"><div style="font-size:22px">📲</div><div class="ic"><b>Telefonunuza ekleyin</b>
+      Yeniliklerden bildirimle haberdar olmak için Safari'de alttaki <b style="display:inline">Paylaş ⬆︎</b> düğmesine, sonra <b style="display:inline">Ana Ekrana Ekle</b>'ye dokunun. Bostan Pano'yu bundan sonra ana ekrandaki simgeden açın.
+      <div class="btnsatir" style="margin-top:8px"><button class="btn kucuk" data-ertele="ios">Daha sonra</button></div></div></div>`;
+  } else if (yuklemeIstegi && !ertelendi('yukle')) {
+    html = `<div class="bildirim-seridi"><div style="font-size:22px">📲</div><div class="ic"><b>Telefonunuza yükleyin</b>
+      Bostan Pano ana ekranınızda bir uygulama gibi dursun, tek dokunuşla açılsın.
+      <div class="btnsatir" style="margin-top:8px"><button class="btn ana kucuk" id="yukleBtn">Yükle</button><button class="btn kucuk" data-ertele="yukle">Daha sonra</button></div></div></div>`;
+  } else if (bildirimVar && 'Notification' in window && Notification.permission === 'default' && !ertelendi('bildirim')) {
+    html = `<div class="bildirim-seridi"><div style="font-size:22px">🔔</div><div class="ic"><b>Bildirimleri açın</b>
+      Yeni duyuru, takvim etkinliği, doküman ve sorularınıza gelen cevaplar telefonunuza bildirim olarak gelsin.
+      <div class="btnsatir" style="margin-top:8px"><button class="btn ana kucuk" id="bildirimSerit">Bildirimleri aç</button><button class="btn kucuk" data-ertele="bildirim">Daha sonra</button></div></div></div>`;
+  }
+  kok.innerHTML = html;
+  $('#yukleBtn') && ($('#yukleBtn').onclick = async () => { yuklemeIstegi.prompt(); await yuklemeIstegi.userChoice; yuklemeIstegi = null; seritCiz(); });
+  $('#bildirimSerit') && ($('#bildirimSerit').onclick = async () => { await bildirimAc(); seritCiz(); });
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ertele]');
+  if (b) ertele(b.dataset.ertele, 7);
+});
+
+async function tokenAl() {
+  const { getMessaging, getToken, isSupported } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
+  if (!(await isSupported())) return null;
+  const reg = await swKayit;
+  if (!reg) return null;
+  const token = await getToken(getMessaging(), { vapidKey: AYAR.vapidKey, serviceWorkerRegistration: reg });
+  await setDoc(doc(db, 'bildirimTokenlari', uid), { token, bostan: uye.bostan, tarih: serverTimestamp() });
+  return token;
+}
+
 async function bildirimAc() {
   if (!AYAR.vapidKey) return toast('Bildirimler henüz etkin değil.');
+  if (iOS && !yuklu) return toast('iPhone’da bildirim için önce Paylaş > Ana Ekrana Ekle ile uygulamayı ekleyin, sonra ana ekrandaki simgeden açın.', 6000);
+  if (!('Notification' in window)) return toast('Bu tarayıcı bildirimleri desteklemiyor.');
   try {
-    const { getMessaging, getToken, isSupported } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
-    if (!(await isSupported())) return toast(/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone’da bildirim için önce Paylaş > Ana Ekrana Ekle ile uygulamayı yükleyin.' : 'Bu tarayıcı bildirimleri desteklemiyor.');
     const izin = await Notification.requestPermission();
-    if (izin !== 'granted') return toast('Bildirim izni verilmedi.');
-    const reg = await swKayit;
-    const token = await getToken(getMessaging(), { vapidKey: AYAR.vapidKey, serviceWorkerRegistration: reg });
-    await setDoc(doc(db, 'bildirimTokenlari', uid), { token, bostan: uye.bostan, tarih: serverTimestamp() });
-    toast('Bildirimler açıldı.');
+    if (izin !== 'granted') return toast('Bildirim izni verilmedi. Telefon ayarlarından açabilirsiniz.');
+    if (await tokenAl()) toast('Bildirimler açıldı.'); else toast('Bu tarayıcı bildirimleri desteklemiyor.');
   } catch (e) { console.warn(e); toast('Bildirimler açılamadı.'); }
+}
+
+// İzin daha önce verildiyse jetonu her açılışta tazele (jetonlar zamanla değişebilir)
+async function sessizTokenYenile() {
+  if (!AYAR.vapidKey || !('Notification' in window) || Notification.permission !== 'granted') return;
+  try { await tokenAl(); } catch (e) {}
 }
 </script>
 </body>

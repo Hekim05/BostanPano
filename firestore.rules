@@ -94,7 +94,7 @@ service cloud.firestore {
         ) || (
           // Yönetici yalnızca durumu değiştirir
           yonetici()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['durum'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['durum', 'onayTarihi'])
           && request.resource.data.durum in ['bekliyor', 'onayli', 'engelli']
         );
 
@@ -192,11 +192,21 @@ service cloud.firestore {
       allow read: if yonetici()
         || (onayli() && (resource.data.bostan == 'hepsi' || resource.data.bostan == uye().bostan));
       allow create, update: if yonetici()
-        && request.resource.data.keys().hasOnly(['baslik', 'tarih', 'saat', 'bitis', 'bostan', 'tur', 'yer', 'aciklama'])
+        && request.resource.data.keys().hasOnly(['baslik', 'tarih', 'saat', 'bitis', 'bostan', 'tur', 'yer', 'aciklama', 'eklenme'])
         && metin(request.resource.data.baslik, 2, 150)
         && request.resource.data.tarih.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && hedefGecerli(request.resource.data.bostan);
       allow delete: if yonetici();
+    }
+
+    // ---------- Yöneticinin tetiklediği bildirimler (sunucu gönderir ve siler) ----------
+    match /bildirimIstekleri/{id} {
+      allow create: if yonetici()
+        && request.resource.data.keys().hasOnly(['baslik', 'govde', 'bostan', 'sekme', 'tarih'])
+        && metin(request.resource.data.baslik, 2, 120)
+        && metin(request.resource.data.govde, 0, 200)
+        && hedefGecerli(request.resource.data.bostan)
+        && request.resource.data.sekme in ['duyuru', 'takvim', 'belge', 'soru'];
     }
 
     // ---------- Bildirim jetonları (yalnızca sunucu okur) ----------

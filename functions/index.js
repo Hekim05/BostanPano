@@ -7,6 +7,7 @@
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineString } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { GoogleAuth } = require('google-auth-library');
@@ -225,14 +226,47 @@ async function gonder(tokenBelgeleri, baslik, govde, yol = '') {
   }
 }
 
+// Bir bostanın (ya da 'hepsi' için tüm) kursiyerlerine bildirim
+async function bostanaGonder(bostan, baslik, govde, sekme) {
+  let q = db.collection('bildirimTokenlari');
+  if (bostan !== 'hepsi') q = q.where('bostan', '==', bostan);
+  const snap = await q.get();
+  await gonder(snap.docs, baslik, govde, '#' + sekme);
+}
+
 exports.duyuruBildir = onDocumentCreated('duyurular/{id}', async (event) => {
   const d = event.data && event.data.data();
   if (!d) return;
-  let q = db.collection('bildirimTokenlari');
-  if (d.bostan !== 'hepsi') q = q.where('bostan', '==', d.bostan);
-  const snap = await q.get();
   const ozet = (d.ozet || d.metin || '').replace(/\s+/g, ' ').slice(0, 120);
-  await gonder(snap.docs, 'Yeni duyuru: ' + d.baslik, ozet);
+  await bostanaGonder(d.bostan, 'Yeni duyuru: ' + d.baslik, ozet, 'duyuru');
+});
+
+// Yönetici panelinden gelen bildirim istekleri (takvim eklemeleri vb.)
+exports.bildirimIstegi = onDocumentCreated('bildirimIstekleri/{id}', async (event) => {
+  const d = event.data && event.data.data();
+  if (!d) return;
+  try { await bostanaGonder(d.bostan, d.baslik, d.govde || '', d.sekme || 'duyuru'); }
+  finally { await event.data.ref.delete(); }
+});
+
+// Drive'a yeni doküman eklendiğinde ilgili bostana bildirim (07:00–22:00 arası saatte bir)
+exports.belgeKontrol = onSchedule({ schedule: '5 7-22 * * *', timeZone: 'Europe/Istanbul' }, async () => {
+  onbellek = { zaman: 0, veri: null };
+  const yapi = await klasorYapisi();
+  const ref = db.doc('ayarlar/drive');
+  const kayit = await ref.get();
+  const ilkCalisma = !kayit.exists;
+  const bilinen = new Set(ilkCalisma ? [] : kayit.data().bilinenler || []);
+  const tumu = [];
+  for (const [bolum, k] of Object.entries(yapi)) {
+    const yeniler = k.dosyalar.filter((f) => !bilinen.has(f.id));
+    k.dosyalar.forEach((f) => tumu.push(f.id));
+    if (ilkCalisma || !yeniler.length) continue;
+    const bostan = bolum === 'genel' ? 'hepsi' : bolum;
+    const baslik = yeniler.length === 1 ? 'Yeni doküman: ' + yeniler[0].name : `${yeniler.length} yeni doküman eklendi`;
+    await bostanaGonder(bostan, baslik, 'Dokümanlar bölümünden indirebilirsiniz.', 'belge');
+  }
+  await ref.set({ bilinenler: tumu, sonKontrol: FieldValue.serverTimestamp() });
 });
 
 exports.mesajBildir = onDocumentCreated('sorular/{kid}/mesajlar/{mid}', async (event) => {
