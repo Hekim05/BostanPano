@@ -1,7 +1,9 @@
 import {
-  APP_VERSION, AYAR, ayarEksik, auth, db, BOSTANLAR, bostanAdi,
+  APP_VERSION, AYAR, ayarEksik, auth, db, fns, BOSTANLAR, bostanAdi,
+  youtubeId, videoKapak, eklerHtml, onizlemeleriYukle, turBilgisi,
   $, $$, esc, toast, tarihYaz, tarihNesne, saatBaslat, makaleHtml, videoGomme, Takvim, swKaydet, ayarEksikEkrani, gunAnahtari,
 } from './ortak.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
@@ -57,7 +59,7 @@ function panelAc() {
   $('#menu').classList.remove('gizli');
   ana.innerHTML = `
     <div class="btnsatir" style="justify-content:flex-end;margin-bottom:8px"><a class="btn kucuk" href="./#duyuru">👁 Kursiyer görünümü</a></div>
-    <section id="b-kursiyer"><div id="kullanimKok"></div><div id="kursiyerKok"></div></section>
+    <section id="b-kursiyer"><div id="kursiyerKok"></div></section>
     <section id="b-duyuru" class="gizli"></section>
     <section id="b-sorular" class="gizli"></section>
     <section id="b-takvim" class="gizli"></section>
@@ -73,6 +75,7 @@ function sekmeAc(s) {
   $$('#menu button').forEach((b) => b.classList.toggle('aktif', b.dataset.sekme === s));
   ['kursiyer', 'duyuru', 'sorular', 'takvim', 'ayar'].forEach((x) => $('#b-' + x)?.classList.toggle('gizli', x !== s));
   history.replaceState(null, '', '#' + s);
+  if (s === 'ayar') kullanimCiz();
   window.scrollTo(0, 0);
 }
 function rozet(sekmeAdi, sayi) {
@@ -86,6 +89,7 @@ let uyeler = [], uyeFiltre = { bostan: '', durum: 'onayli', ara: '' };
 // ---------- Kullanım istatistiği ----------
 const gunTR = (d) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
 const KISA_GUN = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+let kullanimAcik = false;
 async function kullanimCiz() {
   const kok = $('#kullanimKok');
   if (!kok) return;
@@ -108,31 +112,37 @@ async function kullanimCiz() {
     const enCok = Math.max(1, ...gunler.map((x) => x.n));
     const onayli = uyeler.filter((u) => u.durum === 'onayli').length;
     const dagilim = (g) => Object.entries(BOSTANLAR).filter(([k]) => g[k]).map(([k, v]) => `${v} ${g[k]}`).join(' · ') || '—';
-    kok.innerHTML = `<h2>Kullanım</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-        <div class="kart" style="margin:0"><div class="yardim" style="margin:0">Şu an açık</div><div style="font-size:30px;font-weight:700;color:var(--yesil)">${aktif.size}</div><small class="yardim">${esc(dagilim(ga))}</small></div>
-        <div class="kart" style="margin:0"><div class="yardim" style="margin:0">Bugün kullanan</div><div style="font-size:30px;font-weight:700">${bugunDocs.size}</div><small class="yardim">${onayli ? '%' + Math.round((bugunDocs.size / onayli) * 100) + ' · ' : ''}${esc(dagilim(gb))}</small></div>
+    kok.innerHTML = `<div class="kart tikla" id="kullanimKart" role="button" tabindex="0" aria-expanded="${kullanimAcik}">
+      <div class="bolum-ust" style="margin:0 0 8px"><h3 style="margin:0">📊 Kullanım</h3><span class="yardim" style="margin:0">${kullanimAcik ? 'Küçült ▴' : 'Ayrıntı ▾'}</span></div>
+      <div class="mini-istat">
+        <div><small>Şu an açık</small><b>${aktif.size}</b></div>
+        <div><small>Bugün</small><b>${bugunDocs.size}</b>${onayli ? `<small>%${Math.round((bugunDocs.size / onayli) * 100)} kursiyer</small>` : ''}</div>
+        <div><small>7 gün ort.</small><b>${Math.round(gunler.reduce((t, x) => t + x.n, 0) / 7)}</b></div>
       </div>
-      <div class="kart"><div class="yardim" style="margin:0 0 8px">Son 7 gün · günlük farklı kullanıcı</div>
+      ${kullanimAcik ? `<div style="margin-top:12px">
+        <div class="yardim" style="margin:0 0 4px">Şu an: ${esc(dagilim(ga))}</div>
+        <div class="yardim" style="margin:0 0 10px">Bugün: ${esc(dagilim(gb))}</div>
+        <div class="yardim" style="margin:0 0 6px">Son 7 gün · günlük farklı kullanıcı</div>
         ${gunler.map((x) => `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px">
           <span style="width:56px;color:var(--soluk)">${x.etiket}</span>
           <span style="flex:1;background:var(--yesil-acik);border-radius:4px;height:14px;overflow:hidden"><span style="display:block;height:100%;width:${(x.n / enCok) * 100}%;background:var(--yesil)"></span></span>
           <b style="width:28px;text-align:right">${x.n}</b></div>`).join('')}
-        <p class="yardim" style="margin-top:8px">"Şu an açık": son 5 dakikada uygulama ekranı açık olanlar. Ekip kimin kullandığını göremez, yalnızca sayıları görür. Yönetici önizlemesi sayılmaz.</p></div>`;
+        <p class="yardim" style="margin-top:8px">"Şu an açık": son 5 dakikada uygulama ekranı açık olanlar. Ekip kimin kullandığını göremez, yalnızca sayıları görür. Yönetici önizlemesi sayılmaz.</p></div>` : ''}
+    </div>`;
+    $('#kullanimKart').onclick = () => { kullanimAcik = !kullanimAcik; kullanimCiz(); };
   } catch (e) {
     kok.innerHTML = '<div class="kart bos">Kullanım bilgisi alınamadı.</div>';
   }
 }
 
 function kursiyerBaslat() {
-  kullanimCiz();
-  const t = setInterval(() => { if (!document.hidden && sekme === 'kursiyer') kullanimCiz(); }, 60000);
+  const t = setInterval(() => { if (!document.hidden && sekme === 'ayar') kullanimCiz(); }, 60000);
   aboneler.push(() => clearInterval(t));
   aboneler.push(onSnapshot(collection(db, 'uyeler'), (s) => {
     const ilk = !uyeler.length;
     uyeler = s.docs.map((d) => ({ id: d.id, ...d.data() }));
     kursiyerCiz();
-    if (ilk) kullanimCiz();
+    if (ilk && sekme === 'ayar') kullanimCiz();
   }));
 }
 const adAnahtar = (s) => String(s || '').toLocaleLowerCase('tr-TR').replace(/\s+/g, ' ').trim();
@@ -159,39 +169,41 @@ function kursiyerCiz() {
   const gruplar = {};
   liste.forEach((u) => (gruplar[u.bostan] = gruplar[u.bostan] || []).push(u));
   $('#kursiyerKok').innerHTML = `
-    <h2>Onay bekleyenler (${bekleyen.length})</h2>
-    ${bekleyen.length ? `<div class="kart" style="padding:4px 12px">${bekleyen.map((u) => `<div class="belge">
-        <div class="ic"><b>${esc(u.takmaAd)}</b><small>${esc(bostanAdi(u.bostan))} · ${tarihYaz(u.tarih)}</small>
-          ${ayniAd(u) ? `<small style="color:var(--kirmizi);font-weight:600">⚠ Bu takma ad başka bir kursiyerde de var (${ayniAd(u)}). Karışıklık ve taklit riskine karşı reddedip farklı bir adla yeniden istek göndermesini isteyin.</small>` : ''}</div>
-        <div class="btnsatir"><button class="btn ana kucuk" data-durum="onayli" data-uid="${u.id}">Onayla</button>
-        <button class="btn kucuk tehlike" data-durum="engelli" data-uid="${u.id}">Reddet</button></div></div>`).join('')}</div>`
-      : '<div class="kart bos">Bekleyen istek yok.</div>'}
-    <div class="uyari" style="margin-bottom:14px">Onaylamadan önce takma adı ve bostanı kayıt listenizle karşılaştırın. Tanımadığınız istekleri reddedin.</div>
-
-    <h2>Kayıtlı kursiyerler</h2>
-    <div class="kart">
-      <div class="tablo-sar"><table>
-        <tr><th>Bostan</th><th>Onaylı</th><th>Bekleyen</th><th>Engelli</th></tr>
-        ${Object.entries(BOSTANLAR).map(([k, v]) => `<tr><td>${v}</td><td><b>${sayi(k, 'onayli')}</b></td><td>${sayi(k, 'bekliyor')}</td><td>${sayi(k, 'engelli')}</td></tr>`).join('')}
-        <tr><th>Toplam</th><th>${sayi('', 'onayli')}</th><th>${sayi('', 'bekliyor')}</th><th>${sayi('', 'engelli')}</th></tr>
-      </table></div>
+    <div class="izgara-2">
+      <div class="kart">
+        <h2 style="margin-top:0">Onay bekleyenler (${bekleyen.length})</h2>
+        ${bekleyen.length ? bekleyen.map((u) => `<div class="belge">
+          <div class="ic"><b>${esc(u.takmaAd)}</b><small>${esc(bostanAdi(u.bostan))} · ${tarihYaz(u.tarih)}</small>
+            ${ayniAd(u) ? `<small style="color:var(--kirmizi);font-weight:600">⚠ Bu takma ad başka bir kursiyerde de var (${ayniAd(u)}). Reddedip farklı bir adla yeniden istek göndermesini isteyin.</small>` : ''}</div>
+          <div class="btnsatir"><button class="btn ana kucuk" data-durum="onayli" data-uid="${u.id}">Onayla</button>
+          <button class="btn kucuk tehlike" data-durum="engelli" data-uid="${u.id}">Reddet</button></div></div>`).join('')
+          : '<div class="bos">Bekleyen istek yok.</div>'}
+        <div class="uyari" style="margin-top:10px">Onaylamadan önce takma adı ve bostanı kayıt listenizle karşılaştırın.</div>
+      </div>
+      <div class="kart">
+        <h2 style="margin-top:0">Kayıtlı kursiyerler</h2>
+        <div class="tablo-sar"><table>
+          <tr><th>Bostan</th><th>Onaylı</th><th>Bekleyen</th><th>Engelli</th></tr>
+          ${Object.entries(BOSTANLAR).map(([k, v]) => `<tr><td>${v}</td><td><b>${sayi(k, 'onayli')}</b></td><td>${sayi(k, 'bekliyor')}</td><td>${sayi(k, 'engelli')}</td></tr>`).join('')}
+          <tr class="toplam"><td>Toplam</td><td>${sayi('', 'onayli')}</td><td>${sayi('', 'bekliyor')}</td><td>${sayi('', 'engelli')}</td></tr>
+        </table></div>
+      </div>
     </div>
-
     <div class="kart">
       <div class="btnsatir">
         <select id="fBostan" style="flex:1;min-width:140px"><option value="">Tüm bostanlar</option>${bostanSecenek(uyeFiltre.bostan, false)}</select>
         <select id="fDurum" style="flex:1;min-width:110px"><option value="onayli" ${uyeFiltre.durum === 'onayli' ? 'selected' : ''}>Onaylı</option><option value="engelli" ${uyeFiltre.durum === 'engelli' ? 'selected' : ''}>Engelli</option><option value="" ${!uyeFiltre.durum ? 'selected' : ''}>Hepsi</option></select>
+        <input id="fAra" type="search" placeholder="Takma adla ara…" value="${esc(uyeFiltre.ara)}" style="flex:2;min-width:160px">
+        <button class="btn kucuk" id="uyeIndir" ${liste.length ? '' : 'disabled'}>Excel'e indir</button>
       </div>
-      <input id="fAra" type="text" placeholder="Takma adla ara…" value="${esc(uyeFiltre.ara)}" style="margin-top:8px">
-      <div class="btnsatir" style="margin-top:8px;justify-content:space-between"><span class="yardim" style="margin:0">${liste.length} kişi listeleniyor</span>
-        <button class="btn kucuk" id="uyeIndir" ${liste.length ? '' : 'disabled'}>Excel'e indir</button></div>
-      ${liste.length ? Object.keys(BOSTANLAR).filter((b) => gruplar[b]).map((b) => `<h3>${esc(bostanAdi(b))} <small style="font-weight:400;color:var(--soluk)">(${gruplar[b].length})</small></h3>
-        ${gruplar[b].map((u) => `<div class="belge"><div class="ic"><b>${esc(u.takmaAd)}</b>
-          <small>${DURUM_AD[u.durum]} · Kayıt: ${tarihYaz(u.tarih, false) || '—'}${u.onayTarihi ? ' · Onay: ' + tarihYaz(u.onayTarihi, false) : ''}</small></div>
-          ${u.durum === 'onayli' ? `<button class="btn kucuk tehlike" data-durum="engelli" data-uid="${u.id}">Engelle</button>`
-            : `<div class="btnsatir"><button class="btn kucuk" data-durum="onayli" data-uid="${u.id}">Engeli kaldır</button><button class="btn kucuk tehlike" data-uyesil="${u.id}">Sil</button></div>`}</div>`).join('')}`).join('')
-        : '<div class="bos">Kayıt yok.</div>'}
-    </div>`;
+      <p class="yardim">${liste.length} kişi listeleniyor</p>
+    </div>
+    ${liste.length ? `<div class="izgara">${Object.keys(BOSTANLAR).filter((b) => gruplar[b]).map((b) => `<div class="kart"><h3 style="margin-top:0"><span class="etiket ${b}">${esc(bostanAdi(b))}</span> <small style="font-weight:400;color:var(--soluk)">${gruplar[b].length} kişi</small></h3>
+      ${gruplar[b].map((u) => `<div class="belge"><div class="ic"><b>${esc(u.takmaAd)}</b>
+        <small>${DURUM_AD[u.durum]} · Kayıt: ${tarihYaz(u.tarih, false) || '—'}${u.onayTarihi ? ' · Onay: ' + tarihYaz(u.onayTarihi, false) : ''}</small></div>
+        ${u.durum === 'onayli' ? `<button class="btn kucuk tehlike" data-durum="engelli" data-uid="${u.id}">Engelle</button>`
+          : `<div class="btnsatir"><button class="btn kucuk" data-durum="onayli" data-uid="${u.id}">Engeli kaldır</button><button class="btn kucuk tehlike" data-uyesil="${u.id}">Sil</button></div>`}</div>`).join('')}</div>`).join('')}</div>`
+      : '<div class="kart bos">Kayıt yok.</div>'}`;
   $('#fBostan').onchange = (e) => { uyeFiltre.bostan = e.target.value; kursiyerCiz(); };
   $('#fDurum').onchange = (e) => { uyeFiltre.durum = e.target.value; kursiyerCiz(); };
   $('#fAra').oninput = (e) => { uyeFiltre.ara = e.target.value; kursiyerCiz(); };
@@ -224,72 +236,154 @@ document.addEventListener('click', async (e) => {
 });
 
 // ---------- Duyurular ----------
-let duyurular = [], duzenlenen = null;
+let duyurular = [], duzenlenen = null, adGorunum = 'kart';
+const seciliEkler = new Map();
+let driveListe = null;
+try { adGorunum = localStorage.getItem('bp-ad-gorunum') || 'kart'; } catch (e) {}
 function duyuruBaslat() {
   const k = $('#b-duyuru');
-  k.innerHTML = `<h2>Yeni duyuru</h2>
-    <div class="kart" id="dForm">
-      <label for="dBaslik" style="margin-top:0">Başlık</label><input id="dBaslik" type="text" maxlength="150">
+  k.innerHTML = `<div class="bolum-ust"><h2>Duyurular</h2>
+      <div class="btnsatir"><div class="sekmeler"><button data-adgor="kart">▦ Kart</button><button data-adgor="liste">☰ Liste</button></div>
+      <button class="btn ana kucuk" id="dYeni">＋ Yeni duyuru</button></div></div>
+    <div class="kart gizli" id="dForm" style="max-width:860px">
+      <div class="bolum-ust" style="margin:0"><h3 style="margin:0" id="dFormBaslik">Yeni duyuru</h3><button class="btn kucuk" id="dKapat">✕ Kapat</button></div>
+      <label for="dBaslik">Başlık</label><input id="dBaslik" type="text" maxlength="150">
       <label for="dBostan">Kimler görsün?</label><select id="dBostan">${bostanSecenek('hepsi')}</select>
       <label for="dVideo">Video bağlantısı (isteğe bağlı)</label><input id="dVideo" type="text" placeholder="YouTube veya Google Drive video bağlantısı">
       <p class="yardim">YouTube'da "Liste dışı" yüklenen videolar yalnızca bağlantıyı bilenlere açıktır.</p>
+      <label>Fotoğraf ve dokümanlar (Drive klasöründen)</label>
+      <div id="dEkSecili" class="ekler"></div>
+      <button class="btn kucuk" id="dEkAc">📎 Drive'dan seç</button>
+      <div id="dEkListe" class="gizli" style="margin-top:8px"></div>
+      <p class="yardim">Önce dosyayı Drive'daki "Bostan Pano Dokümanları" klasörüne koyun. "Tüm bostanlar" duyurusunda yalnızca <b>Genel</b> klasörü, bostana özel duyuruda Genel ve o bostanın klasörü listelenir.</p>
       <label for="dMetin">Duyuru / makale metni</label>
       <textarea id="dMetin" style="min-height:200px" placeholder="Metni buraya yapıştırın. Boş satır = yeni paragraf, ## ile ara başlık, - ile madde, **kalın**"></textarea>
-      <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="dYorum" checked style="width:22px;height:22px"> Yorumlara açık</label>
-      <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="dSabit" style="width:22px;height:22px"> Üste sabitle</label>
+      <label class="secim"><input type="checkbox" id="dYorum" checked> Yorumlara açık</label>
+      <label class="secim"><input type="checkbox" id="dSabit"> Üste sabitle</label>
       <div class="btnsatir" style="margin-top:12px"><button class="btn" id="dOnizle">Önizle</button><button class="btn ana" id="dKaydet">Yayınla</button><button class="btn gizli" id="dVazgec">Vazgeç</button></div>
       <div id="dOnizleme"></div>
     </div>
-    <h2>Yayındaki duyurular</h2><div id="dListe"></div>`;
+    <div id="dListe"></div>`;
+  $('#dYeni').onclick = () => { formuTemizle(); formAc(); };
+  $('#dKapat').onclick = () => { formuTemizle(); $('#dForm').classList.add('gizli'); };
   $('#dOnizle').onclick = () => {
-    $('#dOnizleme').innerHTML = `<div class="kart" style="margin-top:12px;background:#fafcfa"><div class="ustsatir"><span class="etiket ${$('#dBostan').value}">${esc(bostanAdi($('#dBostan').value))}</span></div>
-      <h3>${esc($('#dBaslik').value)}</h3>${videoGomme($('#dVideo').value.trim())}<div class="makale">${makaleHtml($('#dMetin').value)}</div></div>`;
+    const b = $('#dBostan').value;
+    $('#dOnizleme').innerHTML = `<div class="kart" style="margin-top:12px"><div class="ustsatir"><span class="etiket ${b}">${esc(bostanAdi(b))}</span></div>
+      <h3>${esc($('#dBaslik').value)}</h3>${videoKapak($('#dVideo').value.trim())}${eklerHtml([...seciliEkler.values()])}<div class="makale">${makaleHtml($('#dMetin').value)}</div></div>`;
+    onizlemeleriYukle($('#dOnizleme'));
   };
-  $('#dVazgec').onclick = formuTemizle;
+  $('#dVazgec').onclick = () => { formuTemizle(); $('#dForm').classList.add('gizli'); };
   $('#dKaydet').onclick = duyuruKaydet;
+  $('#dEkAc').onclick = ekListesiAc;
+  $('#dBostan').onchange = () => { if (!$('#dEkListe').classList.contains('gizli')) ekListesiAc(true); };
+  k.querySelectorAll('[data-adgor]').forEach((b) => (b.onclick = () => { adGorunum = b.dataset.adgor; try { localStorage.setItem('bp-ad-gorunum', adGorunum); } catch (e) {} duyuruListeCiz(); }));
   aboneler.push(onSnapshot(query(collection(db, 'duyurular'), orderBy('tarih', 'desc'), limit(100)), (s) => {
     duyurular = s.docs.map((d) => ({ id: d.id, ...d.data() }));
     duyuruListeCiz();
   }));
 }
+function formAc() { $('#dForm').classList.remove('gizli'); $('#dForm').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+function seciliEkCiz() {
+  const k = $('#dEkSecili');
+  k.innerHTML = [...seciliEkler.values()].map((f) => { const [, y] = turBilgisi(f.tur, f.ad); return `<button class="ek" data-ekcikar="${esc(f.id)}" data-onizleme="${esc(f.id)}" data-boyut="240" title="Çıkarmak için dokunun"><span class="tur-rozet">${y} ✕</span><span>${esc(f.ad)}</span></button>`; }).join('');
+  onizlemeleriYukle(k);
+}
+async function ekListesiAc(yenile) {
+  const k = $('#dEkListe');
+  k.classList.remove('gizli');
+  if (!driveListe || yenile === true) {
+    k.innerHTML = '<div class="bos">Drive klasörü okunuyor…</div>';
+    try { driveListe = (await httpsCallable(fns, 'belgeler')()).data; }
+    catch (e) { k.innerHTML = '<div class="hata">Drive listesi alınamadı.</div>'; return; }
+  }
+  const hedef = $('#dBostan').value;
+  const izinli = driveListe.filter((b) => b.bolum === 'genel' || (hedef !== 'hepsi' && b.bolum === hedef));
+  k.innerHTML = izinli.map((b) => `<div class="yardim" style="margin:8px 0 4px;font-weight:700">${b.bolum === 'genel' ? 'Genel' : esc(bostanAdi(b.bolum))}</div>
+    <div class="ekler">${b.dosyalar.map((f) => { const [, y] = turBilgisi(f.tur, f.ad); return `<button class="ek" data-eksec="${esc(f.id)}" ${f.onizleme ? `data-onizleme="${esc(f.id)}" data-boyut="240"` : ''} style="${seciliEkler.has(f.id) ? 'outline:3px solid var(--yesil)' : ''}"><span class="tur-rozet">${y}${seciliEkler.has(f.id) ? ' ✓' : ''}</span><span>${esc(f.ad)}</span></button>`; }).join('') || '<div class="bos">Bu klasör boş.</div>'}</div>`).join('');
+  onizlemeleriYukle(k);
+}
+document.addEventListener('click', (e) => {
+  const s1 = e.target.closest('[data-eksec]');
+  if (s1) {
+    const id = s1.dataset.eksec;
+    if (seciliEkler.has(id)) seciliEkler.delete(id);
+    else {
+      if (seciliEkler.size >= 12) return toast('En fazla 12 ek eklenebilir.');
+      const f = driveListe.flatMap((b) => b.dosyalar).find((x) => x.id === id);
+      seciliEkler.set(id, { id: f.id, ad: f.ad, tur: f.tur, onizleme: !!f.onizleme });
+    }
+    seciliEkCiz(); ekListesiAc();
+    return;
+  }
+  const s2 = e.target.closest('[data-ekcikar]');
+  if (s2) { e.stopPropagation(); seciliEkler.delete(s2.dataset.ekcikar); seciliEkCiz(); if (!$('#dEkListe').classList.contains('gizli')) ekListesiAc(); }
+}, true);
 function formuTemizle() {
   duzenlenen = null;
   ['dBaslik', 'dVideo', 'dMetin'].forEach((i) => ($('#' + i).value = ''));
   $('#dBostan').value = 'hepsi'; $('#dYorum').checked = true; $('#dSabit').checked = false;
+  seciliEkler.clear(); seciliEkCiz(); $('#dEkListe').classList.add('gizli');
+  $('#dFormBaslik').textContent = 'Yeni duyuru';
   $('#dKaydet').textContent = 'Yayınla'; $('#dVazgec').classList.add('gizli'); $('#dOnizleme').innerHTML = '';
 }
 async function duyuruKaydet() {
   const baslik = $('#dBaslik').value.trim(), metin = $('#dMetin').value.trim();
   if (baslik.length < 2) return toast('Başlık yazın.');
+  const hedef = $('#dBostan').value;
+  // Hedef kitlenin açamayacağı klasörden ek seçildiyse uyar
+  const disari = [...seciliEkler.values()].filter((f) => { const b = (driveListe || []).find((x) => x.dosyalar.some((d) => d.id === f.id)); return b && b.bolum !== 'genel' && b.bolum !== hedef; });
+  if (disari.length && !confirm(`${disari.length} ek, bu duyuruyu görecek bazı kursiyerlerin erişemeyeceği bir bostan klasöründe. Yine de yayınlansın mı?`)) return;
   const veri = {
-    baslik, metin, video: $('#dVideo').value.trim(), bostan: $('#dBostan').value,
+    baslik, metin, video: $('#dVideo').value.trim(), bostan: hedef,
     yorumAcik: $('#dYorum').checked, sabit: $('#dSabit').checked,
     ozet: metin.replace(/\s+/g, ' ').slice(0, 140),
   };
+  // Ek yoksa alan hiç gönderilmez (düzenlemede eski ekleri kaldırmak için boş liste gönderilir)
+  const eskiEkVar = duzenlenen && (duyurular.find((x) => x.id === duzenlenen)?.ekler || []).length;
+  if (seciliEkler.size || eskiEkVar) veri.ekler = [...seciliEkler.values()];
   $('#dKaydet').disabled = true;
   try {
     if (duzenlenen) { await updateDoc(doc(db, 'duyurular', duzenlenen), veri); toast('Duyuru güncellendi.'); }
     else { await addDoc(collection(db, 'duyurular'), { ...veri, tarih: serverTimestamp() }); toast('Duyuru yayınlandı.'); }
-    formuTemizle();
+    formuTemizle(); $('#dForm').classList.add('gizli');
   } catch (e) { toast('Kaydedilemedi: ' + (e.code || '')); }
   $('#dKaydet').disabled = false;
 }
 const acikYorumlar = {};
+function adKapak(d, sinif) {
+  const yt = youtubeId(d.video);
+  if (yt) return `<div class="${sinif}" style="background-image:url('https://i.ytimg.com/vi/${yt}/mqdefault.jpg')"></div>`;
+  const ilk = (d.ekler || []).find((f) => f.onizleme !== false);
+  if (ilk) return `<div class="${sinif}" data-onizleme="${esc(ilk.id)}" data-boyut="480"></div>`;
+  return sinif === 'kucuk-gorsel' ? `<div class="${sinif}" style="display:flex;align-items:center;justify-content:center;font-size:20px">📣</div>` : '';
+}
 function duyuruListeCiz() {
   const k = $('#dListe');
-  if (!duyurular.length) { k.innerHTML = '<div class="kart bos">Henüz duyuru yok.</div>'; return; }
-  k.innerHTML = duyurular.map((d) => {
+  $$('[data-adgor]').forEach((b) => b.classList.toggle('aktif', b.dataset.adgor === adGorunum));
+  if (!duyurular.length) { k.innerHTML = '<div class="kart bos">Henüz duyuru yok. Yukarıdaki "Yeni duyuru" ile başlayın.</div>'; return; }
+  const istat = (d) => {
     const t = d.tepkiler || {};
-    const tepkiYazi = Object.entries(t).filter(([, n]) => n > 0).map(([em, n]) => `${em} ${n}`).join('  ');
-    return `<div class="kart ${d.sabit ? 'sabit' : ''}">
-      <div class="ustsatir">${d.sabit ? '📌' : ''}<span class="etiket ${d.bostan}">${esc(bostanAdi(d.bostan))}</span><span>${tarihYaz(d.tarih)}</span></div>
-      <h3>${esc(d.baslik)}</h3>
-      <div class="yardim">${tepkiYazi || 'Tepki yok'} · 💬 ${Math.max(0, d.yorumSayisi || 0)} yorum${d.video ? ' · 🎬 video' : ''}${d.yorumAcik ? '' : ' · yorumlar kapalı'}</div>
-      <div class="btnsatir" style="margin-top:8px"><button class="btn kucuk" data-dduzenle="${d.id}">Düzenle</button>
+    const ty = Object.entries(t).filter(([, n]) => n > 0).map(([em, n]) => `${em} ${n}`).join('  ');
+    return `${ty || 'Tepki yok'} · 💬 ${Math.max(0, d.yorumSayisi || 0)}${(d.ekler || []).length ? ' · 📎 ' + d.ekler.length : ''}${d.video ? ' · 🎬' : ''}${d.yorumAcik ? '' : ' · yorumlar kapalı'}`;
+  };
+  const dugmeler = (d) => `<div class="btnsatir" style="margin-top:8px"><button class="btn kucuk" data-dduzenle="${d.id}">Düzenle</button>
         <button class="btn kucuk" data-dyorum="${d.id}">Yorumlar</button>
         <button class="btn kucuk tehlike" data-dsil="${d.id}">Sil</button></div>
-      <div id="dy-${d.id}" class="yorumlar ${acikYorumlar[d.id] ? '' : 'gizli'}"></div></div>`;
-  }).join('');
+      <div id="dy-${d.id}" class="yorumlar ${acikYorumlar[d.id] ? '' : 'gizli'}"></div>`;
+  if (adGorunum === 'liste') {
+    k.innerHTML = `<div class="satir-liste">${duyurular.map((d) => `<div class="satir ${d.sabit ? 'sabit' : ''}" style="cursor:default;flex-wrap:wrap">
+      ${adKapak(d, 'kucuk-gorsel')}
+      <div class="ic"><b>${d.sabit ? '📌 ' : ''}${esc(d.baslik)}</b><small><span class="etiket ${d.bostan}" style="font-size:10.5px;padding:1px 7px">${esc(bostanAdi(d.bostan))}</span> ${tarihYaz(d.tarih)} · ${istat(d)}</small></div>
+      <div style="flex-basis:100%">${dugmeler(d)}</div></div>`).join('')}</div>`;
+  } else {
+    k.innerHTML = `<div class="izgara">${duyurular.map((d) => `<div class="kart ${d.sabit ? 'sabit' : ''}">
+      ${adKapak(d, 'kart-gorsel')}
+      <div class="ustsatir">${d.sabit ? '📌' : ''}<span class="etiket ${d.bostan}">${esc(bostanAdi(d.bostan))}</span><span>${tarihYaz(d.tarih)}</span></div>
+      <h3>${esc(d.baslik)}</h3>
+      <div class="yardim">${istat(d)}</div>
+      ${dugmeler(d)}</div>`).join('')}</div>`;
+  }
+  onizlemeleriYukle(k);
   Object.keys(acikYorumlar).forEach(yorumCiz);
 }
 function yorumCiz(did) {
@@ -309,8 +403,10 @@ document.addEventListener('click', async (e) => {
       const d = duyurular.find((x) => x.id === ds.dduzenle); duzenlenen = d.id;
       $('#dBaslik').value = d.baslik; $('#dVideo').value = d.video || ''; $('#dMetin').value = d.metin || '';
       $('#dBostan').value = d.bostan; $('#dYorum').checked = !!d.yorumAcik; $('#dSabit').checked = !!d.sabit;
+      seciliEkler.clear(); (d.ekler || []).forEach((f) => seciliEkler.set(f.id, f)); seciliEkCiz();
+      $('#dFormBaslik').textContent = 'Duyuruyu düzenle';
       $('#dKaydet').textContent = 'Güncelle'; $('#dVazgec').classList.remove('gizli');
-      $('#dForm').scrollIntoView({ behavior: 'smooth' });
+      formAc();
     } else if (ds.dsil) {
       if (confirm('Duyuru, yorumları ve tepkileriyle birlikte silinsin mi?')) await deleteDoc(doc(db, 'duyurular', ds.dsil));
     } else if (ds.dyorum) {
@@ -356,7 +452,7 @@ function soruCiz() {
     $('#konuEngel').onclick = async () => { if (confirm('Bu kişinin erişimi kapatılsın mı?')) { try { await updateDoc(doc(db, 'uyeler', acikKonu), { durum: 'engelli' }); toast('Erişim kapatıldı.'); } catch (e) { toast('Yapılamadı.'); } } };
     return;
   }
-  k.innerHTML = '<h2>Sorular</h2>' + (konular.length ? `<div class="kart" style="padding:4px 12px">${konular.map((kn) => `<div class="belge" style="cursor:pointer" data-konu="${kn.id}">
+  k.innerHTML = '<h2>Sorular</h2>' + (konular.length ? `<div class="kart" style="padding:4px 12px;max-width:860px">${konular.map((kn) => `<div class="belge" style="cursor:pointer" data-konu="${kn.id}">
       <div class="ic"><b style="${kn.ekipOkudu === false ? '' : 'font-weight:400'}">${kn.ekipOkudu === false ? '● ' : ''}${esc(kn.takmaAd)} · ${esc(bostanAdi(kn.bostan))}</b>
       <small>${esc(kn.sonMesaj || '')}</small><small>${tarihYaz(kn.sonTarih)}</small></div><span>›</span></div>`).join('')}</div>` : '<div class="kart bos">Henüz soru yok.</div>');
 }
@@ -391,9 +487,9 @@ let etkinlikler = [], takvim, etDuzenlenen = null, aktarilacak = [];
 const TURLER = ['Eğitim', 'Etkinlik', 'Hasat', 'Toplantı', 'Saha çalışması', 'Diğer'];
 function takvimBaslat() {
   const k = $('#b-takvim');
-  k.innerHTML = `<h2>Takvim</h2>
-    <div class="btnsatir" style="margin-bottom:12px"><button class="btn ana" id="etYeni">+ Etkinlik ekle</button><button class="btn" id="etAktarAc">Excel / Word'den aktar</button></div>
-    <div class="kart gizli" id="etForm">
+  k.innerHTML = `<div class="bolum-ust"><h2>Takvim</h2>
+    <div class="btnsatir"><button class="btn ana kucuk" id="etYeni">＋ Etkinlik ekle</button><button class="btn kucuk" id="etAktarAc">Excel / Word'den aktar</button></div></div>
+    <div class="kart gizli" id="etForm" style="max-width:860px">
       <h3 style="margin-top:0" id="etFormBaslik">Yeni etkinlik</h3>
       <label for="etBaslik">Başlık</label><input id="etBaslik" type="text" maxlength="150">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -401,16 +497,22 @@ function takvimBaslat() {
         <div><label for="etSaat">Başlangıç</label><input id="etSaat" type="time"></div>
         <div><label for="etBitis">Bitiş</label><input id="etBitis" type="time"></div></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div><label for="etBostan">Bostan</label><select id="etBostan">${bostanSecenek('hepsi')}</select></div>
-        <div><label for="etTur">Tür</label><select id="etTur">${TURLER.map((t) => `<option>${t}</option>`).join('')}</select></div></div>
+        <div><label for="etTur">Tür</label><select id="etTur">${TURLER.map((t) => `<option>${t}</option>`).join('')}</select></div>
+        <div></div></div>
+      <label>Hangi bostanlarda görünsün?</label>
+      <div class="cipler" id="etBostanlar">
+        <label class="cip"><input type="checkbox" value="hepsi" checked> 🌐 Genel (tüm bostanlar)</label>
+        ${Object.entries(BOSTANLAR).map(([k, v]) => `<label class="cip"><input type="checkbox" value="${k}"> ${v}</label>`).join('')}
+      </div>
+      <p class="yardim">Genel seçilirse herkes görür. Bir ya da birkaç bostan seçerseniz yalnızca o bostanların kursiyerleri görür.</p>
       <label for="etYer">Yer (isteğe bağlı)</label><input id="etYer" type="text" maxlength="100">
       <label for="etAciklama">Açıklama (isteğe bağlı)</label><textarea id="etAciklama" maxlength="1000" style="min-height:70px"></textarea>
       <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="etBildir" style="width:22px;height:22px"> Kursiyerlere bildirim gönder</label>
       <div class="btnsatir" style="margin-top:12px"><button class="btn ana" id="etKaydet">Kaydet</button><button class="btn" id="etVazgec">Vazgeç</button></div>
     </div>
-    <div class="kart gizli" id="etAktar">
+    <div class="kart gizli" id="etAktar" style="max-width:860px">
       <h3 style="margin-top:0">Excel / Word'den aktar</h3>
-      <p class="yardim">Sütunlar: <b>Tarih, Saat, Bitiş, Başlık, Bostan, Tür, Yer, Açıklama</b>. Word dosyasında bu sütunlara sahip bir <b>tablo</b> olmalı. Bostan boş ya da "Tümü" ise herkese görünür.</p>
+      <p class="yardim">Sütunlar: <b>Tarih, Saat, Bitiş, Başlık, Bostan, Tür, Yer, Açıklama</b>. Word dosyasında bu sütunlara sahip bir <b>tablo</b> olmalı. Bostan boş ya da "Tümü" ise herkese görünür. Birden çok bostan için virgülle ayırın (Mutlukent, Ata Bostan).</p>
       <div class="btnsatir" style="margin:8px 0"><button class="btn kucuk" id="sablonIndir">Excel şablonunu indir</button></div>
       <input type="file" id="etDosya" accept=".xlsx,.xls,.csv,.docx" style="width:100%">
       <div id="etOnizleme"></div>
@@ -419,8 +521,16 @@ function takvimBaslat() {
   takvim = new Takvim($('#takvimKok'), { yonetici: true, onDuzenle: etDuzenle, onSil: etSil });
   takvim.ciz();
   aboneler.push(onSnapshot(collection(db, 'etkinlikler'), (s) => {
-    etkinlikler = s.docs.map((d) => ({ id: d.id, ...d.data() })); takvim.ver(etkinlikler);
+    etkinlikler = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+    takvim.ver(gruplanmisEtkinlikler());
   }));
+  // Genel seçilince diğerleri kalkar; bostan seçilince Genel kalkar
+  $('#etBostanlar').addEventListener('change', (e) => {
+    const kutular = $$('#etBostanlar input');
+    if (e.target.value === 'hepsi' && e.target.checked) kutular.forEach((k) => k !== e.target && (k.checked = false));
+    else if (e.target.checked) kutular[0].checked = false;
+    if (!kutular.some((k) => k.checked)) kutular[0].checked = true;
+  });
   $('#etYeni').onclick = () => { etFormAc(); $('#etTarih').value = takvim.secili; };
   $('#etVazgec').onclick = () => $('#etForm').classList.add('gizli');
   $('#etKaydet').onclick = etKaydet;
@@ -428,30 +538,63 @@ function takvimBaslat() {
   $('#etDosya').onchange = dosyaOku;
   $('#sablonIndir').onclick = sablonIndir;
 }
+// Birden çok bostana eklenen etkinlik, her bostan için ayrı kayıt olarak saklanır (ortak "grup" kimliğiyle).
+// Yönetici takviminde tek etkinlik olarak gösterilir.
+function grupUyeleri(e) { return e.grup ? etkinlikler.filter((x) => x.grup === e.grup) : [e]; }
+function gruplanmisEtkinlikler() {
+  const goruldu = new Set(), sonuc = [];
+  etkinlikler.forEach((e) => {
+    if (e.grup) { if (goruldu.has(e.grup)) return; goruldu.add(e.grup); }
+    const uyeleri = grupUyeleri(e);
+    sonuc.push({ ...e, bostanlar: uyeleri.map((x) => x.bostan), bostanEtiket: uyeleri.map((x) => bostanAdi(x.bostan)).join(', ') });
+  });
+  return sonuc;
+}
+function seciliBostanlar() { return $$('#etBostanlar input').filter((k) => k.checked).map((k) => k.value); }
 function etFormAc(e) {
   etDuzenlenen = e ? e.id : null;
   $('#etFormBaslik').textContent = e ? 'Etkinliği düzenle' : 'Yeni etkinlik';
   $('#etBaslik').value = e?.baslik || ''; $('#etTarih').value = e?.tarih || '';
   $('#etSaat').value = e?.saat || ''; $('#etBitis').value = e?.bitis || '';
-  $('#etBostan').value = e?.bostan || 'hepsi'; $('#etTur').value = e?.tur || 'Eğitim';
+  const secili = e ? grupUyeleri(e).map((x) => x.bostan) : ['hepsi'];
+  $$('#etBostanlar input').forEach((k) => (k.checked = secili.includes(k.value)));
+  $('#etTur').value = e?.tur || 'Eğitim';
   $('#etYer').value = e?.yer || ''; $('#etAciklama').value = e?.aciklama || '';
   $('#etBildir').checked = !e;
   $('#etForm').classList.remove('gizli'); $('#etForm').scrollIntoView({ behavior: 'smooth' });
 }
 function etDuzenle(id) { etFormAc(etkinlikler.find((x) => x.id === id)); }
-async function etSil(id) { if (confirm('Etkinlik silinsin mi?')) { try { await deleteDoc(doc(db, 'etkinlikler', id)); } catch (e) { toast('Silinemedi.'); } } }
+async function etSil(id) {
+  const e = etkinlikler.find((x) => x.id === id); if (!e) return;
+  const uyeleri = grupUyeleri(e);
+  if (!confirm(uyeleri.length > 1 ? `Etkinlik ${uyeleri.length} bostanın takviminden silinsin mi?` : 'Etkinlik silinsin mi?')) return;
+  try { const b = writeBatch(db); uyeleri.forEach((x) => b.delete(doc(db, 'etkinlikler', x.id))); await b.commit(); } catch (er) { toast('Silinemedi.'); }
+}
+// Bostan listesine göre kayıtları yaz (düzenlemede eski grup silinip yeniden yazılır)
+async function etkinlikYaz(v, bostanlar, eskiler = [], eklenme = null) {
+  const b = writeBatch(db);
+  eskiler.forEach((x) => b.delete(doc(db, 'etkinlikler', x.id)));
+  const grup = bostanlar.length > 1 ? (eskiler[0]?.grup || 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)) : null;
+  bostanlar.forEach((bs) => {
+    const kayit = { ...v, bostan: bs, eklenme: eklenme || serverTimestamp() };
+    if (grup) kayit.grup = grup;
+    b.set(doc(collection(db, 'etkinlikler')), kayit);
+  });
+  await b.commit();
+}
 async function etKaydet() {
   const v = {
     baslik: $('#etBaslik').value.trim(), tarih: $('#etTarih').value, saat: $('#etSaat').value, bitis: $('#etBitis').value,
-    bostan: $('#etBostan').value, tur: $('#etTur').value, yer: $('#etYer').value.trim(), aciklama: $('#etAciklama').value.trim(),
+    tur: $('#etTur').value, yer: $('#etYer').value.trim(), aciklama: $('#etAciklama').value.trim(),
   };
+  const bostanlar = seciliBostanlar();
   if (v.baslik.length < 2 || !v.tarih) return toast('Başlık ve tarih gerekli.');
   try {
     if (etDuzenlenen) {
       const eski = etkinlikler.find((x) => x.id === etDuzenlenen);
-      await setDoc(doc(db, 'etkinlikler', etDuzenlenen), eski && eski.eklenme ? { ...v, eklenme: eski.eklenme } : v);
-    } else await addDoc(collection(db, 'etkinlikler'), { ...v, eklenme: serverTimestamp() });
-    if ($('#etBildir').checked) await bildirimIste(v.bostan, (etDuzenlenen ? 'Takvim güncellendi: ' : 'Takvime eklendi: ') + v.baslik, etkinlikOzet(v), 'takvim');
+      await etkinlikYaz(v, bostanlar, grupUyeleri(eski), eski.eklenme || null);
+    } else await etkinlikYaz(v, bostanlar);
+    if ($('#etBildir').checked) for (const bs of bostanlar) await bildirimIste(bs, (etDuzenlenen ? 'Takvim güncellendi: ' : 'Takvime eklendi: ') + v.baslik, etkinlikOzet(v), 'takvim');
     $('#etForm').classList.add('gizli'); toast('Kaydedildi.');
   } catch (e) { toast('Kaydedilemedi.'); }
 }
@@ -490,6 +633,14 @@ function bostanBul(s) {
   if (x.includes('alaca')) return 'alacaatli';
   return null;
 }
+// Birden çok bostan: "Mutlukent, Ata Bostan" / "Mutlukent ve Alacaatlı"
+function bostanlarBul(s) {
+  const parcalar = String(s ?? '').split(/[,;\/+]|\s+ve\s+/i).map((x) => x.trim()).filter(Boolean);
+  if (!parcalar.length) return ['hepsi'];
+  const l = parcalar.map(bostanBul);
+  if (l.includes(null)) return null;
+  return l.includes('hepsi') ? ['hepsi'] : [...new Set(l)];
+}
 const AY_ADLARI = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik'];
 function tarihBul(v) {
   if (v instanceof Date && !isNaN(v)) return gunAnahtari(v);
@@ -518,13 +669,13 @@ function satirlariCevir(satirlar) {
     const ham = {}; bas.forEach((k, i) => k && (ham[k] = r[i]));
     const e = {
       baslik: String(ham.baslik ?? '').trim().slice(0, 150), tarih: tarihBul(ham.tarih), saat: saatBul(ham.saat), bitis: saatBul(ham.bitis),
-      bostan: bostanBul(ham.bostan), tur: String(ham.tur ?? '').trim() || 'Eğitim', yer: String(ham.yer ?? '').trim().slice(0, 100), aciklama: String(ham.aciklama ?? '').trim().slice(0, 1000),
+      bostanlar: bostanlarBul(ham.bostan), tur: String(ham.tur ?? '').trim() || 'Eğitim', yer: String(ham.yer ?? '').trim().slice(0, 100), aciklama: String(ham.aciklama ?? '').trim().slice(0, 1000),
     };
     const hatalar = [];
     if (e.baslik.length < 2) hatalar.push('başlık yok');
     if (!e.tarih) hatalar.push('tarih okunamadı: ' + (ham.tarih ?? ''));
     if (e.saat === null) hatalar.push('saat okunamadı'); if (e.bitis === null) hatalar.push('bitiş okunamadı');
-    if (!e.bostan) hatalar.push('bostan tanınmadı: ' + ham.bostan);
+    if (!e.bostanlar) hatalar.push('bostan tanınmadı: ' + ham.bostan);
     e.saat = e.saat || ''; e.bitis = e.bitis || '';
     return { e, hatalar };
   });
@@ -549,7 +700,7 @@ async function dosyaOku(ev) {
     const iyi = aktarilacak.filter((x) => !x.hatalar.length).length;
     kutu.innerHTML = `<p><b>${aktarilacak.length}</b> satır okundu, <b>${iyi}</b> tanesi eklenmeye hazır${iyi < aktarilacak.length ? `, <b style="color:var(--kirmizi)">${aktarilacak.length - iyi}</b> satırda sorun var (kırmızı, eklenmeyecek)` : ''}.</p>
       <div class="tablo-sar"><table><tr><th>Tarih</th><th>Saat</th><th>Başlık</th><th>Bostan</th><th>Tür</th><th>Durum</th></tr>
-      ${aktarilacak.map(({ e, hatalar }) => `<tr class="${hatalar.length ? 'gecersiz' : ''}"><td>${e.tarih ? e.tarih.split('-').reverse().join('.') : '—'}</td><td>${esc(e.saat)}${e.bitis ? '–' + esc(e.bitis) : ''}</td><td>${esc(e.baslik)}</td><td>${e.bostan ? esc(bostanAdi(e.bostan)) : '—'}</td><td>${esc(e.tur)}</td><td>${hatalar.length ? esc(hatalar.join(', ')) : '✓'}</td></tr>`).join('')}</table></div>
+      ${aktarilacak.map(({ e, hatalar }) => `<tr class="${hatalar.length ? 'gecersiz' : ''}"><td>${e.tarih ? e.tarih.split('-').reverse().join('.') : '—'}</td><td>${esc(e.saat)}${e.bitis ? '–' + esc(e.bitis) : ''}</td><td>${esc(e.baslik)}</td><td>${e.bostanlar ? esc(e.bostanlar.map(bostanAdi).join(', ')) : '—'}</td><td>${esc(e.tur)}</td><td>${hatalar.length ? esc(hatalar.join(', ')) : '✓'}</td></tr>`).join('')}</table></div>
       <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="aktarBildir" checked style="width:22px;height:22px"> Kursiyerlere tek bir bildirim gönder</label>
       <div class="btnsatir" style="margin-top:10px"><button class="btn ana" id="aktarOnay" ${iyi ? '' : 'disabled'}>${iyi} etkinliği takvime ekle</button></div>`;
     $('#aktarOnay').onclick = aktar;
@@ -559,17 +710,24 @@ async function aktar() {
   const iyi = aktarilacak.filter((x) => !x.hatalar.length).map((x) => x.e);
   $('#aktarOnay').disabled = true;
   try {
-    for (let i = 0; i < iyi.length; i += 400) {
+    // Her satır, seçilen her bostan için ayrı kayıt; birden çok bostan varsa ortak grup kimliği
+    const kayitlar = [];
+    iyi.forEach((e, n) => {
+      const { bostanlar, ...v } = e;
+      const grup = bostanlar.length > 1 ? 'g' + Date.now().toString(36) + n + Math.random().toString(36).slice(2, 5) : null;
+      bostanlar.forEach((bs) => kayitlar.push(grup ? { ...v, bostan: bs, grup } : { ...v, bostan: bs }));
+    });
+    for (let i = 0; i < kayitlar.length; i += 400) {
       const b = writeBatch(db);
-      iyi.slice(i, i + 400).forEach((e) => b.set(doc(collection(db, 'etkinlikler')), { ...e, eklenme: serverTimestamp() }));
+      kayitlar.slice(i, i + 400).forEach((e) => b.set(doc(collection(db, 'etkinlikler')), { ...e, eklenme: serverTimestamp() }));
       await b.commit();
     }
     if ($('#aktarBildir').checked) {
       // Her bostana yalnızca kendisini ilgilendiren sayıyla tek bildirim
       const sayac = {};
-      iyi.forEach((e) => (sayac[e.bostan] = (sayac[e.bostan] || 0) + 1));
+      kayitlar.forEach((e) => (sayac[e.bostan] = (sayac[e.bostan] || 0) + 1));
       for (const [bostan, n] of Object.entries(sayac)) {
-        await bildirimIste(bostan, n === 1 ? 'Takvime eklendi: ' + iyi.find((e) => e.bostan === bostan).baslik : `Takvime ${n} yeni etkinlik eklendi`, 'Takvim bölümünden ayrıntılara bakabilirsiniz.', 'takvim');
+        await bildirimIste(bostan, n === 1 ? 'Takvime eklendi: ' + kayitlar.find((e) => e.bostan === bostan).baslik : `Takvime ${n} yeni etkinlik eklendi`, 'Takvim bölümünden ayrıntılara bakabilirsiniz.', 'takvim');
       }
     }
     toast(`${iyi.length} etkinlik eklendi.`);
@@ -593,18 +751,21 @@ async function sablonIndir() {
 function ayarBaslat() {
   const k = $('#b-ayar');
   const sahipMi = yoneticiAyar.sahip === ben.email;
-  k.innerHTML = `<h2>Bostan kodları</h2>
-    <div class="kart"><p class="yardim" style="margin-top:0">Kursiyer bu kodu girerek katılma isteği gönderir. Kod sızarsa ya da yeni sezonda değiştirin; mevcut üyeler etkilenmez.</p>
-      ${Object.entries(BOSTANLAR).map(([b, ad]) => `<label for="kod-${b}">${ad}</label>
-        <div class="btnsatir"><input id="kod-${b}" type="text" style="flex:1" autocomplete="off"><button class="btn kucuk" data-kodureti="${b}">Üret</button></div>`).join('')}
-      <button class="btn ana" id="kodKaydet" style="margin-top:12px">Kodları kaydet</button></div>
-    <h2>Yöneticiler (${yoneticiAyar.emailler.length}/6)</h2>
-    <div class="kart">${yoneticiAyar.emailler.map((m) => `<div class="belge"><div class="ic"><b>${esc(m)}</b>${m === yoneticiAyar.sahip ? '<small>Sahip</small>' : ''}</div>
-        ${sahipMi && m !== yoneticiAyar.sahip ? `<button class="btn kucuk tehlike" data-ycikar="${esc(m)}">Çıkar</button>` : ''}</div>`).join('')}
-      ${sahipMi ? (yoneticiAyar.emailler.length < 6 ? `<label for="yEkle">Yönetici ekle (Google hesabı)</label><div class="btnsatir"><input id="yEkle" type="email" style="flex:1" placeholder="ornek@gmail.com"><button class="btn ana kucuk" id="yEkleBtn">Ekle</button></div>` : '<p class="yardim">6 kişilik kontenjan dolu.</p>')
-        : '<p class="yardim">Yönetici listesini yalnızca sahip değiştirebilir.</p>'}</div>
-    <h2>Bu cihaz</h2>
-    <div class="kart btnsatir"><button class="btn" id="yBildirim">🔔 Yeni soru bildirimlerini aç</button><button class="btn" id="cikisYap">Çıkış yap</button></div>`;
+  k.innerHTML = `<h2>Ayarlar</h2>
+    <div class="izgara">
+      <div id="kullanimKok"><div class="kart bos">Kullanım yükleniyor…</div></div>
+      <div class="kart"><h3 style="margin-top:0">🔑 Bostan kodları</h3><p class="yardim" style="margin-top:0">Kursiyer bu kodu girerek katılma isteği gönderir. Kod sızarsa ya da yeni sezonda değiştirin; mevcut üyeler etkilenmez.</p>
+        ${Object.entries(BOSTANLAR).map(([b, ad]) => `<label for="kod-${b}">${ad}</label>
+          <div class="btnsatir"><input id="kod-${b}" type="text" style="flex:1" autocomplete="off"><button class="btn kucuk" data-kodureti="${b}">Üret</button></div>`).join('')}
+        <button class="btn ana" id="kodKaydet" style="margin-top:12px">Kodları kaydet</button></div>
+      <div class="kart"><h3 style="margin-top:0">👥 Yöneticiler (${yoneticiAyar.emailler.length}/6)</h3>
+        ${yoneticiAyar.emailler.map((m) => `<div class="belge"><div class="ic"><b>${esc(m)}</b>${m === yoneticiAyar.sahip ? '<small>Sahip</small>' : ''}</div>
+          ${sahipMi && m !== yoneticiAyar.sahip ? `<button class="btn kucuk tehlike" data-ycikar="${esc(m)}">Çıkar</button>` : ''}</div>`).join('')}
+        ${sahipMi ? (yoneticiAyar.emailler.length < 6 ? `<label for="yEkle">Yönetici ekle (Google hesabı)</label><div class="btnsatir"><input id="yEkle" type="email" style="flex:1" placeholder="ornek@gmail.com"><button class="btn ana kucuk" id="yEkleBtn">Ekle</button></div>` : '<p class="yardim">6 kişilik kontenjan dolu.</p>')
+          : '<p class="yardim">Yönetici listesini yalnızca sahip değiştirebilir.</p>'}</div>
+      <div class="kart"><h3 style="margin-top:0">📱 Bu cihaz</h3><div class="btnsatir"><button class="btn" id="yBildirim">🔔 Yeni soru bildirimlerini aç</button><button class="btn" id="cikisYap">Çıkış yap</button></div></div>
+    </div>`;
+  kullanimCiz();
   Object.keys(BOSTANLAR).forEach(async (b) => { try { const s = await getDoc(doc(db, 'bostanKodlari', b)); $('#kod-' + b).value = s.exists() ? s.data().kod : ''; } catch (e) {} });
   k.onclick = async (e) => {
     const u = e.target.closest('[data-kodureti]');

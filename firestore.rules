@@ -111,7 +111,8 @@ service cloud.firestore {
     match /duyurular/{did} {
       allow read: if yonetici() || (onayli() && duyuruGorunur(resource.data));
       allow create, update: if yonetici()
-        && request.resource.data.keys().hasOnly(['baslik', 'ozet', 'metin', 'video', 'bostan', 'tarih', 'yorumAcik', 'sabit', 'tepkiler', 'yorumSayisi'])
+        && request.resource.data.keys().hasOnly(['baslik', 'ozet', 'metin', 'video', 'bostan', 'tarih', 'yorumAcik', 'sabit', 'tepkiler', 'yorumSayisi', 'ekler'])
+        && (!('ekler' in request.resource.data) || (request.resource.data.ekler is list && request.resource.data.ekler.size() <= 12))
         && metin(request.resource.data.baslik, 2, 150)
         && metin(request.resource.data.metin, 0, 60000)
         && hedefGecerli(request.resource.data.bostan)
@@ -194,7 +195,7 @@ service cloud.firestore {
       allow read: if yonetici()
         || (onayli() && (resource.data.bostan == 'hepsi' || resource.data.bostan == uye().bostan));
       allow create, update: if yonetici()
-        && request.resource.data.keys().hasOnly(['baslik', 'tarih', 'saat', 'bitis', 'bostan', 'tur', 'yer', 'aciklama', 'eklenme'])
+        && request.resource.data.keys().hasOnly(['baslik', 'tarih', 'saat', 'bitis', 'bostan', 'tur', 'yer', 'aciklama', 'eklenme', 'grup'])
         && metin(request.resource.data.baslik, 2, 150)
         && request.resource.data.tarih.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && hedefGecerli(request.resource.data.bostan);

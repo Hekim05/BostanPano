@@ -84,7 +84,7 @@ async function cocuklar(klasorId, sadeceKlasor) {
     const p = {
       q, pageSize: '200', orderBy: 'modifiedTime desc',
       includeItemsFromAllDrives: 'true',
-      fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime)',
+      fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime, hasThumbnail)',
     };
     if (pageToken) p.pageToken = pageToken;
     const j = await driveJson('files', p);
@@ -122,7 +122,7 @@ exports.belgeler = onCall(async (req) => {
       ad: yapi[b].ad,
       dosyalar: yapi[b].dosyalar.map((f) => ({
         id: f.id, ad: f.name, tur: f.mimeType,
-        boyut: f.size ? Number(f.size) : null, tarih: f.modifiedTime,
+        boyut: f.size ? Number(f.size) : null, tarih: f.modifiedTime, onizleme: !!f.hasThumbnail,
       })),
     }));
 });
@@ -170,6 +170,40 @@ exports.belgeIndir = onRequest(
       const kod = e instanceof HttpsError ? 403 : 500;
       console.error(e);
       res.status(kod).send(kod === 403 ? 'Erişim izni yok' : 'Sunucu hatası');
+    }
+  }
+);
+
+// Küçük önizleme resmi (doküman, fotoğraf, sunum kapağı). Yalnızca izinli klasörlerdeki dosyalar.
+exports.belgeOnizleme = onRequest(
+  { cors: ['https://hekim05.github.io', /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/] },
+  async (req, res) => {
+    try {
+      const m = (req.get('Authorization') || '').match(/^Bearer (.+)$/);
+      if (!m) return res.status(401).send('Giriş gerekli');
+      const token = await admin.auth().verifyIdToken(m[1]);
+      const bolumler = await izinliBolumler(token);
+      const id = String(req.query.id || '');
+      if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) return res.status(400).send('Geçersiz dosya');
+      const yapi = await klasorYapisi();
+      if (!bolumler.some((b) => yapi[b] && yapi[b].dosyalar.some((f) => f.id === id))) return res.status(403).send('İzin yok');
+      const boyut = Math.min(800, Math.max(120, Number(req.query.boyut) || 400));
+      const meta = await driveJson(`files/${id}`, { fields: 'thumbnailLink, mimeType, size' });
+      let r;
+      if (meta.thumbnailLink) {
+        const client = await auth.getClient();
+        const { token: t } = await client.getAccessToken();
+        r = await fetch(meta.thumbnailLink.replace(/=s\d+$/, '=s' + boyut), { headers: { Authorization: `Bearer ${t}` } });
+      } else if (/^image\//.test(meta.mimeType) && Number(meta.size || 0) < 5e6) {
+        r = await driveFetch(`files/${id}`, { alt: 'media' });
+      }
+      if (!r || !r.ok) return res.status(404).send('Önizleme yok');
+      res.set('Content-Type', r.headers.get('content-type') || 'image/jpeg');
+      res.set('Cache-Control', 'private, max-age=3600');
+      Readable.fromWeb(r.body).pipe(res);
+    } catch (e) {
+      console.error(e);
+      res.status(e instanceof HttpsError ? 403 : 500).send('Hata');
     }
   }
 );
