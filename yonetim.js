@@ -536,8 +536,8 @@ function soruCiz() {
     k.innerHTML = `<button class="linkbtn" id="geri">‹ Tüm sorular</button>
       <h2>${esc(kn.takmaAd || '')} <small style="font-weight:400;font-size:14px;color:var(--soluk)">· ${esc(bostanAdi(kn.bostan))}</small></h2>
       <div class="sohbet">${konuMesajlar.map((m) => `<div class="balon ${m.kimden === 'ekip' ? 'ben' : ''}">${esc(m.metin)}
-        <div class="alt"><span>${m.kimden === 'ekip' ? 'Ekip' : esc(kn.takmaAd)} · ${tarihYaz(m.tarih)}</span><button data-msil="${m.id}">Sil</button></div></div>`).join('') || '<div class="bos">Mesaj yok.</div>'}</div>
-      <div class="kart"><label for="cevap" style="margin-top:0">Cevabınız <small style="font-weight:400;color:var(--soluk)">(“Bostan Pano Ekibi” adıyla gider)</small></label>
+        <div class="alt"><span>${m.kimden === 'ekip' ? 'Ekip · ' + esc(yazanlar[m.id] || 'yazan kayıtlı değil') : esc(kn.takmaAd)} · ${tarihYaz(m.tarih)}</span><button data-msil="${m.id}">Sil</button></div></div>`).join('') || '<div class="bos">Mesaj yok.</div>'}</div>
+      <div class="kart"><label for="cevap" style="margin-top:0">Cevabınız <small style="font-weight:400;color:var(--soluk)">(kursiyere “Bostan Pano Ekibi” adıyla gider; adınızı yalnızca yöneticiler görür)</small></label>
         <textarea id="cevap" maxlength="4000"></textarea>
         <div class="btnsatir" style="margin-top:8px"><button class="btn ana" id="cevapGonder">Gönder</button>
         <button class="btn tehlike" id="konuEngel">Kişiyi engelle</button></div></div>`;
@@ -553,11 +553,16 @@ function soruCiz() {
 document.addEventListener('click', async (e) => {
   const kb = e.target.closest('[data-konu]');
   if (kb) {
-    acikKonu = kb.dataset.konu; konuMesajlar = [];
+    acikKonu = kb.dataset.konu; konuMesajlar = []; yazanlar = {};
     mesajAbone && mesajAbone();
-    mesajAbone = onSnapshot(query(collection(db, 'sorular', acikKonu, 'mesajlar'), orderBy('tarih', 'asc')), (s) => {
+    // Cevabı hangi yöneticinin yazdığı ayrı, yalnızca yöneticilerin okuyabildiği kayıtta tutulur
+    const yazanAbone = onSnapshot(collection(db, 'sorular', acikKonu, 'yazanlar'), (s) => {
+      yazanlar = {}; s.docs.forEach((d) => (yazanlar[d.id] = d.data().ad || d.data().email)); soruCiz();
+    }, () => {});
+    const msjAbone = onSnapshot(query(collection(db, 'sorular', acikKonu, 'mesajlar'), orderBy('tarih', 'asc')), (s) => {
       konuMesajlar = s.docs.map((d) => ({ id: d.id, ...d.data() })); soruCiz();
     });
+    mesajAbone = () => { yazanAbone(); msjAbone(); };
     const kn = konular.find((x) => x.id === acikKonu);
     if (kn && kn.ekipOkudu === false) updateDoc(doc(db, 'sorular', acikKonu), { ekipOkudu: true }).catch(() => {});
     soruCiz(); return;
@@ -565,12 +570,15 @@ document.addEventListener('click', async (e) => {
   const ms = e.target.closest('[data-msil]');
   if (ms && confirm('Mesaj silinsin mi?')) { try { await deleteDoc(doc(db, 'sorular', acikKonu, 'mesajlar', ms.dataset.msil)); } catch (er) { toast('Silinemedi.'); } }
 });
+let yazanlar = {};
 async function cevapGonder() {
   const metin = $('#cevap').value.trim(); if (!metin) return;
   $('#cevapGonder').disabled = true;
   try {
     const batch = writeBatch(db);
-    batch.set(doc(collection(db, 'sorular', acikKonu, 'mesajlar')), { kimden: 'ekip', metin, tarih: serverTimestamp() });
+    const mref = doc(collection(db, 'sorular', acikKonu, 'mesajlar'));
+    batch.set(mref, { kimden: 'ekip', metin, tarih: serverTimestamp() });
+    batch.set(doc(db, 'sorular', acikKonu, 'yazanlar', mref.id), { email: ben.email, ad: (ben.displayName || '').slice(0, 60), tarih: serverTimestamp() });
     batch.update(doc(db, 'sorular', acikKonu), { sonMesaj: ('Ekip: ' + metin).slice(0, 120), sonTarih: serverTimestamp(), ekipOkudu: true, kursiyerOkudu: false });
     await batch.commit();
   } catch (e) { toast('Gönderilemedi.'); $('#cevapGonder').disabled = false; }

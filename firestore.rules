@@ -169,6 +169,17 @@ service cloud.firestore {
         );
       allow delete: if yonetici();
 
+      // Ekip cevabını hangi yöneticinin yazdığı: kursiyer okuyamaz, yalnızca yöneticiler görür
+      match /yazanlar/{mid} {
+        allow read: if yonetici();
+        allow create: if yonetici()
+          && request.resource.data.keys().hasOnly(['email', 'ad', 'tarih'])
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.ad is string && request.resource.data.ad.size() <= 60
+          && request.resource.data.tarih == request.time;
+        allow delete: if yonetici();
+      }
+
       match /mesajlar/{mid} {
         allow read: if yonetici() || (onayli() && request.auth.uid == kid);
         allow create: if (
