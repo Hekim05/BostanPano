@@ -279,3 +279,38 @@ tr.gecersiz td { background: var(--kirmizi-acik) !important; }
 .ust .ad span { font-size: 13.5px; opacity: .95; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
 .ust .saat { font-size: 12.5px; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
 .ust .saat b { font-size: 22px; }
+
+/* Yönetici önizleme şeridi (küçük) */
+.oniz-serit { display: flex; align-items: center; gap: 8px; background: #eef4ff; border: 1px solid #bcd0f5; border-radius: 999px; padding: 4px 6px 4px 12px; margin-bottom: 12px; font-size: 14px; font-weight: 600; color: #1d4f91; }
+.oniz-serit select { flex: 1; min-width: 0; min-height: 34px; padding: 2px 8px; border-radius: 999px; font-size: 14px; }
+.oniz-serit a { white-space: nowrap; padding: 6px 10px; text-decoration: none; color: #1d4f91; }
+@media (prefers-color-scheme: dark) { .oniz-serit { background: #142033; border-color: #24395a; color: #9cc2f5; } .oniz-serit a { color: #9cc2f5; } }
+
+/* ---------- Daha büyük yazı ---------- */
+body { font-size: 18px; line-height: 1.6; }
+h2 { font-size: 22px; }
+h3, .kart h3 { font-size: 19px; }
+.ozet { font-size: 16.5px; }
+.ustsatir { font-size: 14px; }
+.etiket { font-size: 13px; }
+.yeni-etiket { font-size: 12.5px; }
+.btn { font-size: 17px; min-height: 48px; }
+.btn.kucuk { font-size: 15.5px; min-height: 40px; }
+.sekmeler button { font-size: 15px; min-height: 40px; }
+label { font-size: 16px; }
+.yardim, .uyari, .bilgi, .bildirim-seridi, .bos { font-size: 15.5px; }
+.bildirim-seridi b { font-size: 17px; }
+.altmenu button { font-size: 13px; min-height: 64px; }
+.altmenu button svg { width: 26px; height: 26px; }
+.arama input, .arama input[type=search] { font-size: 17px; min-height: 48px; }
+table { font-size: 16px; } th { font-size: 14.5px; }
+.gun .no { font-size: 16px; width: 32px; height: 32px; line-height: 32px; }
+.ayizgara .gunadi { font-size: 13.5px; }
+.gunliste h4, .makale h4 { font-size: 17px; }
+.yorum .kim { font-size: 14.5px; }
+.balon .alt, .balon .alt button { font-size: 13.5px; }
+.ek span { font-size: 12.5px; }
+.satir .ic small, .belge .ic small, .etkinlik .ic small { font-size: 14.5px; }
+.sonuc .tip { font-size: 12.5px; }
+.alt-bilgi { font-size: 13.5px; }
+.toast { font-size: 16px; }

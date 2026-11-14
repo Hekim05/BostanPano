@@ -4,7 +4,7 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-aut
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
-export const APP_VERSION = '2026.11.14-6';
+export const APP_VERSION = '2026.11.14-7';
 export const AYAR = self.BP_AYAR || {};
 export const ayarEksik = !AYAR.firebase || !AYAR.firebase.apiKey || !AYAR.firebase.projectId;
 

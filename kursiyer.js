@@ -68,10 +68,9 @@ function onizlemeBaslat() {
 }
 function onizlemeSeridi() {
   if (!onizleme) return '';
-  return `<div class="bildirim-seridi" style="background:#eef4ff;border-color:#bcd0f5"><div style="font-size:22px">👁</div><div class="ic">
-    <b>Kursiyer görünümü (yönetici önizlemesi)</b>Ekranı seçtiğiniz bostanın kursiyeri gibi görüyorsunuz. Yorum, tepki ve soru gönderme kapalı.
-    <div class="btnsatir" style="margin-top:8px"><select id="onizBostan" style="flex:1;min-width:160px">${Object.entries(BOSTANLAR).map(([k, v]) => `<option value="${k}" ${uye.bostan === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-    <a class="btn kucuk" href="yonetim.html">‹ Yönetim paneline dön</a></div></div></div>`;
+  return `<div class="oniz-serit"><span title="Kursiyer görünümü: yorum, tepki ve soru gönderme kapalı">👁 Önizleme</span>
+    <select id="onizBostan" aria-label="Bostan">${Object.entries(BOSTANLAR).map(([k, v]) => `<option value="${k}" ${uye.bostan === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+    <a href="yonetim.html">‹ Panel</a></div>`;
 }
 document.addEventListener('change', (e) => {
   if (e.target.id !== 'onizBostan') return;
