@@ -65,7 +65,7 @@ function panelAc() {
     <section id="b-takvim" class="gizli"></section>
     <section id="b-ayar" class="gizli"></section>
     <p class="alt-bilgi">Bostan Pano Yönetim · Sürüm ${APP_VERSION}</p>`;
-  kursiyerBaslat(); duyuruBaslat(); soruBaslat(); takvimBaslat(); ayarBaslat(); yoneticiBildirim(true);
+  kursiyerBaslat(); duyuruBaslat(); soruBaslat(); takvimBaslat(); ayarBaslat(); yoneticiBildirim(true); yoneticiAktif();
   const h = location.hash.replace('#', '');
   sekmeAc(['kursiyer', 'duyuru', 'sorular', 'takvim', 'ayar'].includes(h) ? h : 'kursiyer');
 }
@@ -90,6 +90,17 @@ let uyeler = [], uyeFiltre = { bostan: '', durum: 'onayli', ara: '' };
 const gunTR = (d) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
 const KISA_GUN = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 let kullanimAcik = false;
+let kimAcik = false;
+// Yönetici paneli açıkken "şu an açık" kaydı (yalnızca sahip okuyabilir)
+let sonYonAktif = 0;
+async function yoneticiAktif() {
+  if (!ben || document.hidden || Date.now() - sonYonAktif < 65000) return;
+  sonYonAktif = Date.now();
+  try { await setDoc(doc(db, 'yoneticiAktiflik', ben.uid), { son: serverTimestamp(), email: ben.email }); } catch (e) {}
+}
+setInterval(yoneticiAktif, 3 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) yoneticiAktif(); });
+
 async function kullanimCiz() {
   const kok = $('#kullanimKok');
   if (!kok) return;
@@ -101,6 +112,15 @@ async function kullanimCiz() {
     const bugunDocs = await getDocs(collection(db, 'ziyaretler', bugun, 'kisiler'));
     const grupla = (docs) => { const g = {}; docs.forEach((d) => (g[d.data().bostan] = (g[d.data().bostan] || 0) + 1)); return g; };
     const ga = grupla(aktif.docs), gb = grupla(bugunDocs.docs);
+    // Yalnızca sahip: şu an paneli açık yöneticiler ve kullananların adları
+    const sahipMi = yoneticiAyar && yoneticiAyar.sahip === ben.email;
+    let yon = null;
+    if (sahipMi) {
+      try { yon = (await getDocs(query(collection(db, 'yoneticiAktiflik'), where('son', '>=', Timestamp.fromMillis(simdi - 5 * 60000))))).docs.map((d) => d.data().email); } catch (e) { yon = null; }
+    }
+    const adlar = (docs) => docs.map((d) => { const u = uyeler.find((x) => x.id === d.id); return { ad: u ? u.takmaAd : 'Silinmiş üye', bostan: BOSTANLAR[d.data().bostan] || '' }; })
+      .sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
+    const kisiListe = (l) => l.length ? l.map((k) => `<div class="belge" style="padding:6px 0"><div class="ic"><b>${esc(k.ad)}</b>${k.bostan ? `<small>${esc(k.bostan)}</small>` : ''}</div></div>`).join('') : '<p class="yardim" style="margin:4px 0">Kimse yok.</p>';
     // Son 7 gün (yalnızca sayım sorgusu, belge okunmaz)
     const gunler = [];
     for (let i = 6; i >= 0; i--) {
@@ -115,7 +135,8 @@ async function kullanimCiz() {
     kok.innerHTML = `<div class="kart tikla" id="kullanimKart" role="button" tabindex="0" aria-expanded="${kullanimAcik}">
       <div class="bolum-ust" style="margin:0 0 8px"><h3 style="margin:0">📊 Kullanım</h3><span class="yardim" style="margin:0">${kullanimAcik ? 'Küçült ▴' : 'Ayrıntı ▾'}</span></div>
       <div class="mini-istat">
-        <div><small>Şu an açık</small><b>${aktif.size}</b></div>
+        <div><small>Şu an açık</small><b>${aktif.size}</b><small>kursiyer</small></div>
+        ${sahipMi ? `<div><small>Yönetici</small><b>${yon ? yon.length : '—'}</b><small>şu an</small></div>` : ''}
         <div><small>Bugün</small><b>${bugunDocs.size}</b>${onayli ? `<small>%${Math.round((bugunDocs.size / onayli) * 100)} kursiyer</small>` : ''}</div>
         <div><small>7 gün ort.</small><b>${Math.round(gunler.reduce((t, x) => t + x.n, 0) / 7)}</b></div>
       </div>
@@ -127,9 +148,19 @@ async function kullanimCiz() {
           <span style="width:56px;color:var(--soluk)">${x.etiket}</span>
           <span style="flex:1;background:var(--yesil-acik);border-radius:4px;height:14px;overflow:hidden"><span style="display:block;height:100%;width:${(x.n / enCok) * 100}%;background:var(--yesil)"></span></span>
           <b style="width:28px;text-align:right">${x.n}</b></div>`).join('')}
-        <p class="yardim" style="margin-top:8px">"Şu an açık": son 5 dakikada uygulama ekranı açık olanlar. Ekip kimin kullandığını göremez, yalnızca sayıları görür. Yönetici önizlemesi sayılmaz.</p></div>` : ''}
+        ${sahipMi ? `<div class="btnsatir" style="margin-top:12px"><button class="btn kucuk" id="kimAc">${kimAcik ? 'Kimler olduğunu gizle ▴' : '👤 Kimler olduğunu göster ▾'}</button></div>
+          ${kimAcik ? `<div style="margin-top:8px">
+            <div class="yardim" style="margin:8px 0 2px"><b>Şu an açık · kursiyer (${aktif.size})</b></div>${kisiListe(adlar(aktif.docs))}
+            <div class="yardim" style="margin:10px 0 2px"><b>Şu an açık · yönetici (${yon ? yon.length : '—'})</b></div>${yon ? kisiListe(yon.map((m) => ({ ad: m, bostan: m === ben.email ? 'Siz' : '' }))) : '<p class="yardim" style="margin:4px 0">Yönetici bilgisi alınamadı.</p>'}
+            <div class="yardim" style="margin:10px 0 2px"><b>Bugün girenler (${bugunDocs.size})</b></div>${kisiListe(adlar(bugunDocs.docs))}
+            <p class="yardim" style="margin-top:6px">Bu liste yalnızca sahip hesabında görünür.</p></div>` : ''}` : ''}
+        <p class="yardim" style="margin-top:8px">"Şu an açık": son 5 dakikada ekranı açık olanlar. Kursiyerler takma adla kayıtlıdır; gerçek kimlik tutulmaz. Yönetici önizlemesi sayılmaz.</p></div>` : ''}
     </div>`;
-    $('#kullanimKart').onclick = () => { kullanimAcik = !kullanimAcik; kullanimCiz(); };
+    $('#kullanimKart').onclick = (e) => {
+      if (e.target.closest('#kimAc')) { kimAcik = !kimAcik; return kullanimCiz(); }
+      if (kimAcik && e.target.closest('.belge')) return;
+      kullanimAcik = !kullanimAcik; kullanimCiz();
+    };
   } catch (e) {
     kok.innerHTML = '<div class="kart bos">Kullanım bilgisi alınamadı.</div>';
   }

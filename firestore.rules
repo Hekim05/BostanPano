@@ -226,6 +226,14 @@ service cloud.firestore {
       allow update: if onayli() && request.auth.uid == kid && aktiflikVerisi()
         && request.time > resource.data.son + duration.value(60, 's');
     }
+    // Yönetici paneli açık kaydı: her yönetici kendi kaydını yazar, yalnızca sahip okur
+    match /yoneticiAktiflik/{kid} {
+      allow read: if sahip();
+      allow create, update: if yonetici() && request.auth.uid == kid
+        && request.resource.data.keys().hasOnly(['son', 'email'])
+        && request.resource.data.son == request.time
+        && request.resource.data.email == request.auth.token.email;
+    }
     match /ziyaretler/{gun}/kisiler/{kid} {
       allow read: if yonetici();
       allow create: if onayli() && request.auth.uid == kid
