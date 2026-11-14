@@ -1,4 +1,4 @@
-const VERSION = '2026.11.14-10';
+const VERSION = '2026.11.14-11';
 const CACHE = 'app-' + VERSION;
 const KABUK = ['./', './index.html', './yonetim.html', './stil.css', './ortak.js', './kursiyer.js', './yonetim.js', './config.js',
   './logo.png', './baslik.jpg', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
@@ -15,7 +15,8 @@ try {
 } catch (e) { /* bildirim olmadan devam */ }
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(KABUK)).catch(() => {}));
+  // Tarayıcının 10 dakikalık ara belleğini atla: her dosya sunucudan taze alınır
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(KABUK.map((u) => new Request(u, { cache: 'no-store' })))).catch(() => {}));
   self.skipWaiting();
 });
 
@@ -35,7 +36,7 @@ self.addEventListener('fetch', (e) => {
   const sayfa = r.mode === 'navigate' || /\.(html|js|css)$/.test(url.pathname) || url.pathname.endsWith('/');
   if (ayniKaynak && sayfa) {
     // Ağ öncelikli: güncel sürüm; çevrimdışıyken önbellek
-    e.respondWith(fetch(r).then((res) => {
+    e.respondWith(fetch(r, { cache: 'no-store' }).then((res) => {
       const kopya = res.clone();
       caches.open(CACHE).then((c) => c.put(r, kopya));
       return res;
