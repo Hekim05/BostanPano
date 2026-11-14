@@ -1,4 +1,4 @@
-const VERSION = '2026.11.14-13';
+const VERSION = '2026.11.14-14';
 const CACHE = 'app-' + VERSION;
 const KABUK = ['./', './index.html', './yonetim.html', './stil.css', './ortak.js', './kursiyer.js', './yonetim.js', './config.js',
   './logo.png', './qr.png', './baslik.jpg', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
@@ -48,4 +48,15 @@ self.addEventListener('fetch', (e) => {
       return res;
     })));
   }
+});
+
+// Uygulama açıkken elle gösterilen bildirimlere dokunulunca ilgili sayfayı aç
+self.addEventListener('notificationclick', (e) => {
+  const link = e.notification.data && e.notification.data.bpLink;
+  if (!link) return;
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+    const c = cs.find((x) => 'focus' in x);
+    return c ? c.focus().then(() => c.navigate(link)).catch(() => {}) : self.clients.openWindow(link);
+  }));
 });

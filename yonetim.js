@@ -2,7 +2,7 @@ import {
   APP_VERSION, AYAR, ayarEksik, auth, db, fns, BOSTANLAR, bostanAdi,
   youtubeId, videoKapak, eklerHtml, onizlemeleriYukle, turBilgisi, isikKutusu,
   $, $$, esc, toast, tarihYaz, tarihNesne, saatBaslat, makaleHtml, videoGomme, Takvim, swKaydet, ayarEksikEkrani, gunAnahtari,
-} from './ortak.js';
+  acikkenGoster }  from './ortak.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
@@ -65,7 +65,7 @@ function panelAc() {
     <section id="b-takvim" class="gizli"></section>
     <section id="b-ayar" class="gizli"></section>
     <p class="alt-bilgi">Bostan Pano Yönetim · Sürüm ${APP_VERSION}</p>`;
-  kursiyerBaslat(); duyuruBaslat(); soruBaslat(); takvimBaslat(); ayarBaslat();
+  kursiyerBaslat(); duyuruBaslat(); soruBaslat(); takvimBaslat(); ayarBaslat(); yoneticiBildirim(true);
   const h = location.hash.replace('#', '');
   sekmeAc(['kursiyer', 'duyuru', 'sorular', 'takvim', 'ayar'].includes(h) ? h : 'kursiyer');
 }
@@ -811,14 +811,19 @@ async function yoneticiGuncelle(liste) {
     yoneticiAyar.emailler = liste; ayarBaslat(); toast('Yönetici listesi güncellendi.');
   } catch (e) { toast('Güncellenemedi.'); }
 }
-async function yoneticiBildirim() {
-  if (!AYAR.vapidKey) return toast('Bildirim anahtarı (vapidKey) config.js içinde tanımlı değil.');
+let onDinleyici = false;
+async function yoneticiBildirim(sessiz) {
+  sessiz = sessiz === true;
+  if (!AYAR.vapidKey) return sessiz || toast('Bildirim anahtarı (vapidKey) config.js içinde tanımlı değil.');
   try {
-    const { getMessaging, getToken, isSupported } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
-    if (!(await isSupported())) return toast('Bu tarayıcı bildirimleri desteklemiyor.');
-    if ((await Notification.requestPermission()) !== 'granted') return toast('İzin verilmedi.');
-    const token = await getToken(getMessaging(), { vapidKey: AYAR.vapidKey, serviceWorkerRegistration: await swKayit });
+    if (sessiz && (!('Notification' in window) || Notification.permission !== 'granted')) return;
+    const { getMessaging, getToken, isSupported, onMessage } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
+    if (!(await isSupported())) return sessiz || toast('Bu tarayıcı bildirimleri desteklemiyor.');
+    if (!sessiz && (await Notification.requestPermission()) !== 'granted') return toast('İzin verilmedi.');
+    const reg = await swKayit;
+    const token = await getToken(getMessaging(), { vapidKey: AYAR.vapidKey, serviceWorkerRegistration: reg });
     await setDoc(doc(db, 'yoneticiTokenlari', ben.uid), { token, email: ben.email, tarih: serverTimestamp() });
-    toast('Yeni soru bildirimleri açıldı.');
-  } catch (e) { toast('Bildirim açılamadı.'); }
+    if (!onDinleyici) { onDinleyici = true; onMessage(getMessaging(), (p) => acikkenGoster(reg, p)); }
+    if (!sessiz) toast('Yeni soru bildirimleri açıldı.');
+  } catch (e) { if (!sessiz) toast('Bildirim açılamadı.'); }
 }

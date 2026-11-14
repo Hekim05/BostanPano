@@ -4,7 +4,7 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-aut
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
-export const APP_VERSION = '2026.11.14-13';
+export const APP_VERSION = '2026.11.14-14';
 export const AYAR = self.BP_AYAR || {};
 export const ayarEksik = !AYAR.firebase || !AYAR.firebase.apiKey || !AYAR.firebase.projectId;
 
@@ -359,4 +359,13 @@ export async function swKaydet() {
 export function ayarEksikEkrani(kok) {
   kok.innerHTML = `<div class="ortala kart"><img class="logo" src="logo.png" alt=""><h2>Kurulum tamamlanmadı</h2>
     <p>config.js dosyasına Firebase proje bilgileri henüz girilmemiş. Kurulum rehberindeki adımları izleyin.</p></div>`;
+}
+
+// Uygulama açıkken gelen anlık bildirimi sistem bildirimi olarak gösterir
+export function acikkenGoster(reg, p) {
+  try {
+    const n = (p && p.notification) || {};
+    const link = (p && p.fcmOptions && p.fcmOptions.link) || './';
+    if (reg && n.title) reg.showNotification(n.title, { body: n.body || '', icon: './icon-192.png', data: { bpLink: link } });
+  } catch (e) {}
 }

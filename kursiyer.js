@@ -2,7 +2,7 @@ import {
   APP_VERSION, AYAR, ayarEksik, auth, db, fns, BOSTANLAR, bostanAdi, yasakAd,
   $, $$, esc, toast, tarihYaz, saatBaslat, makaleHtml, videoGomme, sesliOku, Takvim, swKaydet, ayarEksikEkrani,
   youtubeId, videoKapak, eklerHtml, onizlemeleriYukle, belgeAc, turBilgisi,
-} from './ortak.js';
+  acikkenGoster }  from './ortak.js';
 import { signInAnonymously, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   doc, getDoc, setDoc, collection, query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp, deleteDoc,
@@ -650,13 +650,16 @@ document.addEventListener('click', (e) => {
   if (b) ertele(b.dataset.ertele, 7);
 });
 
+let onDinleyici = false;
 async function tokenAl() {
-  const { getMessaging, getToken, isSupported } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
+  const { getMessaging, getToken, isSupported, onMessage } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
   if (!(await isSupported())) return null;
   const reg = await swKayit;
   if (!reg) return null;
   const token = await getToken(getMessaging(), { vapidKey: AYAR.vapidKey, serviceWorkerRegistration: reg });
   await setDoc(doc(db, 'bildirimTokenlari', uid), { token, bostan: uye.bostan, tarih: serverTimestamp() });
+  // Uygulama açıkken gelen bildirimler kendiliğinden görünmez; elle gösterilir
+  if (!onDinleyici) { onDinleyici = true; onMessage(getMessaging(), (p) => acikkenGoster(reg, p)); }
   return token;
 }
 
