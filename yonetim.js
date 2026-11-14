@@ -296,9 +296,15 @@ function duyuruBaslat() {
       <div class="btnsatir" style="margin-top:12px"><button class="btn" id="dOnizle">Önizle</button><button class="btn ana" id="dKaydet">Yayınla</button><button class="btn gizli" id="dVazgec">Vazgeç</button></div>
       <div id="dOnizleme"></div>
     </div>
+    <div class="arama" style="margin:0 0 10px"><input id="yAra" type="search" placeholder="Başlık ya da dosya adı ara…" autocomplete="off" aria-label="Paylaşımlarda ara"></div>
+    <div class="sekmeler" id="yFiltreler" style="margin-bottom:14px;flex-wrap:wrap">
+      <button data-yfiltre="hepsi">Tümü</button><button data-yfiltre="duyuru">📣 Duyurular</button><button data-yfiltre="makale">📖 Makaleler</button><button data-yfiltre="belge">📁 Eğitim dokümanları</button></div>
     <div id="dBelge" style="margin-bottom:16px"></div>
     <div id="dListe"></div>`;
   belgePanelCiz();
+  let araT = null;
+  $('#yAra').oninput = () => { clearTimeout(araT); araT = setTimeout(() => { yAra = $('#yAra').value.trim(); duyuruListeCiz(); belgePanelCiz(); }, 250); };
+  $$('[data-yfiltre]').forEach((b) => (b.onclick = () => { yFiltre = b.dataset.yfiltre; duyuruListeCiz(); belgePanelCiz(); }));
   $('#dYeni').onclick = () => { formuTemizle(); formAc(); };
   $('#dKapat').onclick = () => { formuTemizle(); $('#dForm').classList.add('gizli'); };
   $('#dOnizle').onclick = () => {
@@ -319,30 +325,42 @@ function duyuruBaslat() {
 }
 // ---------- Drive'daki eğitim dokümanları (yönetici görünümü) ----------
 let belgePanelAcik = false;
+let yFiltre = 'hepsi', yAra = '';
+const acikIcerik = {};
+const trKucuk = (s) => String(s || '').toLocaleLowerCase('tr-TR');
+const araUyar = (...alanlar) => !yAra || alanlar.some((a) => trKucuk(a).includes(trKucuk(yAra)));
 async function belgePanelCiz(yenile) {
   const k = $('#dBelge');
   if (!k) return;
-  const ust = (n) => `<div class="bolum-ust tikla" id="dBelgeUst" role="button" tabindex="0" style="margin:0"><h3 style="margin:0">📁 Eğitim dokümanları${n != null ? ` (${n})` : ''}</h3><span class="yardim" style="margin:0">${belgePanelAcik ? 'Küçült ▴' : 'Göster ▾'}</span></div>`;
+  if (yFiltre === 'duyuru' || yFiltre === 'makale') { k.innerHTML = ''; return; }
+  const zorla = yFiltre === 'belge' || !!yAra;
+  const acik = belgePanelAcik || zorla;
+  const ust = (n) => `<div class="bolum-ust tikla" id="dBelgeUst" role="button" tabindex="0" style="margin:0"><h3 style="margin:0">📁 Eğitim dokümanları${n != null ? ` (${n})` : ''}</h3><span class="yardim" style="margin:0">${zorla ? '' : belgePanelAcik ? 'Küçült ▴' : 'Göster ▾'}</span></div>`;
   const bagla = () => { $('#dBelgeUst').onclick = () => { belgePanelAcik = !belgePanelAcik; belgePanelCiz(); }; };
-  if (!belgePanelAcik) { k.innerHTML = `<div class="kart">${ust(driveListe ? driveListe.reduce((t, b) => t + b.dosyalar.length, 0) : null)}</div>`; return bagla(); }
+  if (!acik) { k.innerHTML = `<div class="kart">${ust(driveListe ? driveListe.reduce((t, b) => t + b.dosyalar.length, 0) : null)}</div>`; return bagla(); }
   if (!driveListe || yenile === true) {
     k.innerHTML = `<div class="kart">${ust(null)}<div class="bos">Drive klasörü okunuyor…</div></div>`; bagla();
     try { driveListe = (await httpsCallable(fns, 'belgeler')()).data; }
     catch (e) { k.innerHTML = `<div class="kart">${ust(null)}<div class="hata">Drive listesi alınamadı.</div></div>`; return bagla(); }
   }
   const boyut = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
-  const toplam = driveListe.reduce((t, b) => t + b.dosyalar.length, 0);
+  const tumu = driveListe;
+  const suzulmus = tumu.map((b) => ({ ...b, dosyalar: b.dosyalar.filter((f) => araUyar(f.ad)) }));
+  const toplam = suzulmus.reduce((t, b) => t + b.dosyalar.length, 0);
+  if (yAra && !toplam && yFiltre !== 'belge') { k.innerHTML = ''; return; }
   k.innerHTML = `<div class="kart">${ust(toplam)}
     <p class="yardim" style="margin:8px 0">Drive'daki "Bostan Pano Dokümanları" klasöründe duran tüm dosyalar; en yeni üstte. Kursiyer yalnızca Genel ile kendi bostanını görür. Dosya eklemek, silmek ya da adını değiştirmek için Drive'ı kullanın.</p>
-    ${toplam ? driveListe.filter((b) => b.dosyalar.length).map((b) => `<div class="yardim" style="margin:12px 0 4px;font-weight:700">${b.bolum === 'genel' ? 'Genel (tüm bostanlar)' : esc(bostanAdi(b.bolum))} · ${b.dosyalar.length}</div>
+    ${toplam ? suzulmus.filter((b) => b.dosyalar.length).map((b) => `<div class="yardim" style="margin:12px 0 4px;font-weight:700">${b.bolum === 'genel' ? 'Genel (tüm bostanlar)' : esc(bostanAdi(b.bolum))} · ${b.dosyalar.length}</div>
       ${b.dosyalar.map((f) => { const [s, yz] = turBilgisi(f.tur, f.ad); return `<div class="belge"><span class="tur ${s}">${yz}</span>
         <div class="ic"><b>${esc(f.ad)}</b><small>${tarihYaz(f.tarih, false)}${f.boyut ? ' · ' + boyut(f.boyut) : ''}</small></div>
-        <button class="btn kucuk" data-yac="${esc(f.id)}" data-ad="${esc(f.ad)}" data-tur="${esc(f.tur)}">Aç</button></div>`; }).join('')}`).join('') : '<div class="bos">Henüz doküman eklenmemiş.</div>'}
+        <button class="btn kucuk" data-yac="${esc(f.id)}" data-ad="${esc(f.ad)}" data-tur="${esc(f.tur)}">Aç</button></div>`; }).join('')}`).join('') : `<div class="bos">${yAra ? 'Aramaya uyan doküman yok.' : 'Henüz doküman eklenmemiş.'}</div>`}
     <div class="btnsatir" style="margin-top:10px"><button class="btn kucuk" id="dBelgeYenile">↻ Listeyi yenile</button></div></div>`;
   bagla();
   $('#dBelgeYenile').onclick = () => belgePanelCiz(true);
 }
 document.addEventListener('click', (e) => {
+  const ic = e.target.closest('[data-dicerik]');
+  if (ic) { acikIcerik[ic.dataset.dicerik] = !acikIcerik[ic.dataset.dicerik]; return duyuruListeCiz(); }
   const b = e.target.closest('[data-yac]');
   if (b) belgeAc(b.dataset.yac, b.dataset.ad, b.dataset.tur);
 });
@@ -429,23 +447,29 @@ function adKapak(d, sinif) {
 function duyuruListeCiz() {
   const k = $('#dListe');
   $$('[data-adgor]').forEach((b) => b.classList.toggle('aktif', b.dataset.adgor === adGorunum));
-  if (!duyurular.length) { k.innerHTML = '<div class="kart bos">Henüz duyuru yok. Yukarıdaki "Yeni duyuru" ile başlayın.</div>'; return; }
+  $$('[data-yfiltre]').forEach((b) => b.classList.toggle('aktif', b.dataset.yfiltre === yFiltre));
+  if (yFiltre === 'belge') { k.innerHTML = ''; return; }
+  if (!duyurular.length) { k.innerHTML = '<div class="kart bos">Henüz paylaşım yok. Yukarıdaki "Yeni paylaşım" ile başlayın.</div>'; return; }
+  const liste = duyurular.filter((d) => (yFiltre === 'hepsi' || (d.tip === 'makale' ? 'makale' : 'duyuru') === yFiltre)
+    && araUyar(d.baslik, d.ozet, ...(d.ekler || []).map((f) => f.ad)));
+  if (!liste.length) { k.innerHTML = `<div class="kart bos">${yAra ? 'Aramaya uyan duyuru ya da makale yok.' : 'Bu başlıkta henüz paylaşım yok.'}</div>`; return; }
+  const icerik = (d) => `<div class="${acikIcerik[d.id] ? '' : 'gizli'}" style="margin-top:10px">${videoKapak(d.video || '')}${eklerHtml(d.ekler || [])}<div class="makale">${makaleHtml(d.metin || '')}</div></div>`;
   const istat = (d) => {
     const t = d.tepkiler || {};
     const ty = Object.entries(t).filter(([, n]) => n > 0).map(([em, n]) => `${em} ${n}`).join('  ');
     return `${ty || 'Tepki yok'} · 💬 ${Math.max(0, d.yorumSayisi || 0)}${(d.ekler || []).length ? ' · 📎 ' + d.ekler.length : ''}${d.video ? ' · 🎬' : ''}${d.yorumAcik ? '' : ' · yorumlar kapalı'}`;
   };
-  const dugmeler = (d) => `<div class="btnsatir" style="margin-top:8px"><button class="btn kucuk" data-dduzenle="${d.id}">Düzenle</button>
+  const dugmeler = (d) => `<div class="btnsatir" style="margin-top:8px"><button class="btn kucuk" data-dicerik="${d.id}">${acikIcerik[d.id] ? 'Kapat ▴' : 'Görüntüle ▾'}</button><button class="btn kucuk" data-dduzenle="${d.id}">Düzenle</button>
         <button class="btn kucuk" data-dyorum="${d.id}">Yorumlar</button>
         <button class="btn kucuk tehlike" data-dsil="${d.id}">Sil</button></div>
-      <div id="dy-${d.id}" class="yorumlar ${acikYorumlar[d.id] ? '' : 'gizli'}"></div>`;
+      ${icerik(d)}<div id="dy-${d.id}" class="yorumlar ${acikYorumlar[d.id] ? '' : 'gizli'}"></div>`;
   if (adGorunum === 'liste') {
-    k.innerHTML = `<div class="satir-liste">${duyurular.map((d) => `<div class="satir ${d.sabit ? 'sabit' : ''}" style="cursor:default;flex-wrap:wrap">
+    k.innerHTML = `<div class="satir-liste">${liste.map((d) => `<div class="satir ${d.sabit ? 'sabit' : ''}" style="cursor:default;flex-wrap:wrap">
       ${adKapak(d, 'kucuk-gorsel')}
       <div class="ic"><b>${d.sabit ? '📌 ' : ''}${d.tip === 'makale' ? '📖 ' : ''}${esc(d.baslik)}</b><small><span class="etiket ${d.bostan}" style="font-size:10.5px;padding:1px 7px">${esc(bostanAdi(d.bostan))}</span> ${tarihYaz(d.tarih)} · ${istat(d)}</small></div>
       <div style="flex-basis:100%">${dugmeler(d)}</div></div>`).join('')}</div>`;
   } else {
-    k.innerHTML = `<div class="izgara">${duyurular.map((d) => `<div class="kart ${d.sabit ? 'sabit' : ''}">
+    k.innerHTML = `<div class="izgara">${liste.map((d) => `<div class="kart ${d.sabit ? 'sabit' : ''}">
       ${adKapak(d, 'kart-gorsel')}
       <div class="ustsatir">${d.sabit ? '📌' : ''}<span>${d.tip === 'makale' ? '📖 Makale' : '📣 Duyuru'}</span><span class="etiket ${d.bostan}">${esc(bostanAdi(d.bostan))}</span><span>${tarihYaz(d.tarih)}</span></div>
       <h3>${esc(d.baslik)}</h3>
