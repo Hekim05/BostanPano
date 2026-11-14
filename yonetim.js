@@ -2,7 +2,7 @@ import {
   APP_VERSION, AYAR, ayarEksik, auth, db, fns, BOSTANLAR, bostanAdi,
   youtubeId, videoKapak, eklerHtml, onizlemeleriYukle, turBilgisi, isikKutusu,
   $, $$, esc, toast, tarihYaz, tarihNesne, saatBaslat, makaleHtml, videoGomme, Takvim, swKaydet, ayarEksikEkrani, gunAnahtari,
-  acikkenGoster }  from './ortak.js';
+  acikkenGoster, belgeAc }  from './ortak.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
@@ -296,7 +296,9 @@ function duyuruBaslat() {
       <div class="btnsatir" style="margin-top:12px"><button class="btn" id="dOnizle">Önizle</button><button class="btn ana" id="dKaydet">Yayınla</button><button class="btn gizli" id="dVazgec">Vazgeç</button></div>
       <div id="dOnizleme"></div>
     </div>
+    <div id="dBelge" style="margin-bottom:16px"></div>
     <div id="dListe"></div>`;
+  belgePanelCiz();
   $('#dYeni').onclick = () => { formuTemizle(); formAc(); };
   $('#dKapat').onclick = () => { formuTemizle(); $('#dForm').classList.add('gizli'); };
   $('#dOnizle').onclick = () => {
@@ -315,6 +317,36 @@ function duyuruBaslat() {
     duyuruListeCiz();
   }));
 }
+// ---------- Drive'daki eğitim dokümanları (yönetici görünümü) ----------
+let belgePanelAcik = false;
+async function belgePanelCiz(yenile) {
+  const k = $('#dBelge');
+  if (!k) return;
+  const ust = (n) => `<div class="bolum-ust tikla" id="dBelgeUst" role="button" tabindex="0" style="margin:0"><h3 style="margin:0">📁 Eğitim dokümanları${n != null ? ` (${n})` : ''}</h3><span class="yardim" style="margin:0">${belgePanelAcik ? 'Küçült ▴' : 'Göster ▾'}</span></div>`;
+  const bagla = () => { $('#dBelgeUst').onclick = () => { belgePanelAcik = !belgePanelAcik; belgePanelCiz(); }; };
+  if (!belgePanelAcik) { k.innerHTML = `<div class="kart">${ust(driveListe ? driveListe.reduce((t, b) => t + b.dosyalar.length, 0) : null)}</div>`; return bagla(); }
+  if (!driveListe || yenile === true) {
+    k.innerHTML = `<div class="kart">${ust(null)}<div class="bos">Drive klasörü okunuyor…</div></div>`; bagla();
+    try { driveListe = (await httpsCallable(fns, 'belgeler')()).data; }
+    catch (e) { k.innerHTML = `<div class="kart">${ust(null)}<div class="hata">Drive listesi alınamadı.</div></div>`; return bagla(); }
+  }
+  const boyut = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+  const toplam = driveListe.reduce((t, b) => t + b.dosyalar.length, 0);
+  k.innerHTML = `<div class="kart">${ust(toplam)}
+    <p class="yardim" style="margin:8px 0">Drive'daki "Bostan Pano Dokümanları" klasöründe duran tüm dosyalar; en yeni üstte. Kursiyer yalnızca Genel ile kendi bostanını görür. Dosya eklemek, silmek ya da adını değiştirmek için Drive'ı kullanın.</p>
+    ${toplam ? driveListe.filter((b) => b.dosyalar.length).map((b) => `<div class="yardim" style="margin:12px 0 4px;font-weight:700">${b.bolum === 'genel' ? 'Genel (tüm bostanlar)' : esc(bostanAdi(b.bolum))} · ${b.dosyalar.length}</div>
+      ${b.dosyalar.map((f) => { const [s, yz] = turBilgisi(f.tur, f.ad); return `<div class="belge"><span class="tur ${s}">${yz}</span>
+        <div class="ic"><b>${esc(f.ad)}</b><small>${tarihYaz(f.tarih, false)}${f.boyut ? ' · ' + boyut(f.boyut) : ''}</small></div>
+        <button class="btn kucuk" data-yac="${esc(f.id)}" data-ad="${esc(f.ad)}" data-tur="${esc(f.tur)}">Aç</button></div>`; }).join('')}`).join('') : '<div class="bos">Henüz doküman eklenmemiş.</div>'}
+    <div class="btnsatir" style="margin-top:10px"><button class="btn kucuk" id="dBelgeYenile">↻ Listeyi yenile</button></div></div>`;
+  bagla();
+  $('#dBelgeYenile').onclick = () => belgePanelCiz(true);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-yac]');
+  if (b) belgeAc(b.dataset.yac, b.dataset.ad, b.dataset.tur);
+});
+
 function formAc() { $('#dForm').classList.remove('gizli'); $('#dForm').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function seciliEkCiz() {
   const k = $('#dEkSecili');

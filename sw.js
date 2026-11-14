@@ -1,4 +1,4 @@
-const VERSION = '2026.11.14-15';
+const VERSION = '2026.11.14-16';
 const CACHE = 'app-' + VERSION;
 const KABUK = ['./', './index.html', './yonetim.html', './stil.css', './ortak.js', './kursiyer.js', './yonetim.js', './config.js',
   './logo.png', './qr.png', './baslik.jpg', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
