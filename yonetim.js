@@ -1,6 +1,6 @@
 import {
   APP_VERSION, AYAR, ayarEksik, auth, db, fns, BOSTANLAR, bostanAdi,
-  youtubeId, videoKapak, eklerHtml, onizlemeleriYukle, turBilgisi,
+  youtubeId, videoKapak, eklerHtml, onizlemeleriYukle, turBilgisi, isikKutusu,
   $, $$, esc, toast, tarihYaz, tarihNesne, saatBaslat, makaleHtml, videoGomme, Takvim, swKaydet, ayarEksikEkrani, gunAnahtari,
 } from './ortak.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
@@ -770,8 +770,13 @@ function ayarBaslat() {
           ${sahipMi && m !== yoneticiAyar.sahip ? `<button class="btn kucuk tehlike" data-ycikar="${esc(m)}">Çıkar</button>` : ''}</div>`).join('')}
         ${sahipMi ? (yoneticiAyar.emailler.length < 6 ? `<label for="yEkle">Yönetici ekle (Google hesabı)</label><div class="btnsatir"><input id="yEkle" type="email" style="flex:1" placeholder="ornek@gmail.com"><button class="btn ana kucuk" id="yEkleBtn">Ekle</button></div>` : '<p class="yardim">6 kişilik kontenjan dolu.</p>')
           : '<p class="yardim">Yönetici listesini yalnızca sahip değiştirebilir.</p>'}</div>
-      <div class="kart"><h3 style="margin-top:0">📱 Bu cihaz</h3><div class="btnsatir"><button class="btn" id="yBildirim">🔔 Yeni soru bildirimlerini aç</button><button class="btn" id="cikisYap">Çıkış yap</button></div></div>
+      <div class="kart"><h3 style="margin-top:0">🔳 Kursiyer kare kodu</h3>
+        <button id="qrAc" style="border:0;background:none;padding:0;cursor:pointer;display:block;margin:0 auto" aria-label="Kare kodu büyüt"><img src="qr.png" alt="Bostan Pano kare kodu" style="width:160px;border-radius:8px;border:1px solid var(--cizgi);display:block"></button>
+        <p class="yardim" style="text-align:center">Büyütmek için dokunun. Kursiyer telefonunun kamerasıyla okutunca uygulama açılır; ardından bostan kodunu girer.</p>
+        <div class="btnsatir" style="justify-content:center;margin-top:8px"><a class="btn kucuk" href="qr.png" download="Bostan_Pano_Kare_Kod.png">Resmi indir</a></div></div>
+            <div class="kart"><h3 style="margin-top:0">📱 Bu cihaz</h3><div class="btnsatir"><button class="btn" id="yBildirim">🔔 Yeni soru bildirimlerini aç</button><button class="btn" id="cikisYap">Çıkış yap</button></div></div>
     </div>`;
+  $('#qrAc').onclick = () => isikKutusu('qr.png', 'Bostan Pano kare kodu', () => { const l = document.createElement('a'); l.href = 'qr.png'; l.download = 'Bostan_Pano_Kare_Kod.png'; l.click(); });
   kullanimCiz();
   Object.keys(BOSTANLAR).forEach(async (b) => { try { const s = await getDoc(doc(db, 'bostanKodlari', b)); $('#kod-' + b).value = s.exists() ? s.data().kod : ''; } catch (e) {} });
   k.onclick = async (e) => {
