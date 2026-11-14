@@ -377,3 +377,13 @@ tr.toplam td { border-top-color: var(--dolgu); }
 .cip { border-radius: 8px; }
 input[type=text], input[type=date], input[type=time], input[type=email], input[type=search], select, textarea { border-radius: 8px; }
 .uyari, .bilgi, .bildirim-seridi { border-radius: 8px; }
+
+/* Tasarım B + yüksek fotoğraflı başlık */
+.ust { position: relative; padding: 16px 16px 14px; }
+.ust::before, .ust::after { display: block; }
+.ust::after { background: linear-gradient(180deg, rgba(23,52,4,.30) 0%, rgba(23,52,4,.55) 45%, rgba(23,52,4,.94) 100%); }
+.ust-ic { min-height: 150px; align-items: flex-end; }
+.ust img { width: 52px; height: 52px; }
+.ust .ad b { font-size: 22px; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+.ust .ad span, .ust .saat { text-shadow: 0 1px 2px rgba(0,0,0,.5); color: #EAF3DE; }
+.ust .saat b { font-size: 22px; }
