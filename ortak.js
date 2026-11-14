@@ -4,7 +4,7 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-aut
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
-export const APP_VERSION = '2026.11.14-18';
+export const APP_VERSION = '2026.11.14-19';
 export const AYAR = self.BP_AYAR || {};
 export const ayarEksik = !AYAR.firebase || !AYAR.firebase.apiKey || !AYAR.firebase.projectId;
 
@@ -151,6 +151,17 @@ export function isikKutusu(src, ad, indir) {
   document.body.appendChild(d);
 }
 // Dosyayı aç: resimler ışık kutusunda, PDF yeni sekmede, diğerleri indirilir
+export function videoKutusu(src, ad) {
+  const d = document.createElement('div');
+  d.className = 'isik';
+  d.innerHTML = `<button class="kapat" aria-label="Kapat">✕</button><video controls autoplay playsinline controlsList="nodownload" preload="metadata" aria-label="${esc(ad || '')}"></video>`;
+  const v = d.querySelector('video');
+  v.oncontextmenu = (e) => e.preventDefault();
+  v.onerror = () => { toast('Video oynatılamadı.'); };
+  v.src = src;
+  d.onclick = (e) => { if (e.target === d || e.target.closest('.kapat')) { v.pause(); v.removeAttribute('src'); v.load(); d.remove(); } };
+  document.body.appendChild(d);
+}
 export async function belgeAc(id, ad, tur) {
   const indir = async (ac) => {
     const t = await auth.currentUser.getIdToken();
@@ -167,6 +178,14 @@ export async function belgeAc(id, ad, tur) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
   try {
+    if (/^video\//.test(tur || '')) {
+      // 100 MB altındaki videolar indirilmeden oynatılır
+      const t = await auth.currentUser.getIdToken();
+      const r = await fetch(fnAdres('belgeIndir') + `?id=${encodeURIComponent(id)}&bilet=1`, { headers: { Authorization: 'Bearer ' + t } });
+      if (r.ok) { const { bilet } = await r.json(); videoKutusu(fnAdres('belgeIzle') + `?id=${encodeURIComponent(id)}&b=${bilet}`, ad); return; }
+      if (r.status !== 413) throw new Error(r.status);
+      toast('Bu video 100 MB’tan büyük olduğu için indiriliyor…', 5000);
+    }
     if (/^image\//.test(tur || '')) { const u = await kucukResim(id, 1600); isikKutusu(u, ad, () => indir(false).catch(() => toast('İndirilemedi.'))); return; }
     await indir(true);
   } catch (e) { toast('Dosya açılamadı.'); }

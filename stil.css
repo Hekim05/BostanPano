@@ -389,3 +389,5 @@ input[type=text], input[type=date], input[type=time], input[type=email], input[t
 .ust .saat b { font-size: 22px; }
 .kart.bos { padding: 16px; }
 .isik img { background: #fff; }
+
+.isik video { max-width: 100%; max-height: 82vh; border-radius: 10px; background: #000; }

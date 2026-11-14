@@ -134,6 +134,83 @@ const DISA_AKTAR = {
   'application/vnd.google-apps.drawing': 'application/pdf',
 };
 
+// ---------- Video izleme (indirmeden, parça parça) ----------
+const crypto = require('crypto');
+const VIDEO_SINIR = 100 * 1024 * 1024;
+const BILET_SURE = 3 * 60 * 60 * 1000;
+const PARCA = 4 * 1024 * 1024;
+let biletAnahtari = null;
+async function anahtar() {
+  if (biletAnahtari) return biletAnahtari;
+  const ref = db.doc('gizli/bilet');
+  let s = await ref.get();
+  if (!s.exists) {
+    await ref.create({ anahtar: crypto.randomBytes(32).toString('hex') }).catch(() => {});
+    s = await ref.get();
+  }
+  biletAnahtari = s.data().anahtar;
+  return biletAnahtari;
+}
+function imza(k, id, bitis) {
+  return crypto.createHmac('sha256', k).update(id + '|' + bitis).digest('hex');
+}
+async function biletUret(id) {
+  const bitis = Date.now() + BILET_SURE;
+  return bitis + '.' + imza(await anahtar(), id, bitis);
+}
+async function biletGecerli(id, bilet) {
+  const m = String(bilet || '').match(/^(\d{13})\.([a-f0-9]{64})$/);
+  if (!m || Number(m[1]) < Date.now()) return false;
+  const beklenen = Buffer.from(imza(await anahtar(), id, m[1]));
+  const gelen = Buffer.from(m[2]);
+  return beklenen.length === gelen.length && crypto.timingSafeEqual(beklenen, gelen);
+}
+const videoMeta = new Map();
+
+exports.belgeIzle = onRequest(async (req, res) => {
+  try {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).send('Yöntem desteklenmiyor');
+    const id = String(req.query.id || '');
+    if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) return res.status(400).send('Geçersiz dosya');
+    if (!(await biletGecerli(id, req.query.b))) return res.status(403).send('İzleme izni yok ya da süresi doldu');
+
+    let meta = videoMeta.get(id);
+    if (!meta) {
+      const m = await driveJson(`files/${id}`, { fields: 'mimeType, size, trashed' });
+      meta = { tur: m.mimeType, boyut: Number(m.size || 0), cop: !!m.trashed };
+      videoMeta.set(id, meta);
+      if (videoMeta.size > 200) videoMeta.delete(videoMeta.keys().next().value);
+    }
+    if (meta.cop || !/^video\//.test(meta.tur || '') || !meta.boyut || meta.boyut >= VIDEO_SINIR) return res.status(404).send('Video bulunamadı');
+
+    const ar = String(req.get('Range') || '').match(/^bytes=(\d+)-(\d*)$/);
+    let bas = ar ? Number(ar[1]) : 0;
+    let son = ar && ar[2] ? Number(ar[2]) : meta.boyut - 1;
+    if (bas >= meta.boyut) { res.set('Content-Range', `bytes */${meta.boyut}`); return res.status(416).end(); }
+    son = Math.min(son, meta.boyut - 1, bas + PARCA - 1);
+
+    res.set('Accept-Ranges', 'bytes');
+    res.set('Content-Type', meta.tur);
+    res.set('Content-Range', `bytes ${bas}-${son}/${meta.boyut}`);
+    res.set('Content-Length', String(son - bas + 1));
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.set('Content-Disposition', 'inline');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.status(206);
+    if (req.method === 'HEAD') return res.end();
+
+    const client = await auth.getClient();
+    const { token } = await client.getAccessToken();
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}`, Range: `bytes=${bas}-${son}` } });
+    if (!r.ok) return res.status(502).end();
+    res.end(Buffer.from(await r.arrayBuffer()));
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) res.status(500).send('Sunucu hatası'); else res.end();
+  }
+});
+
 exports.belgeIndir = onRequest(
   { cors: ['https://hekim05.github.io', /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/] },
   async (req, res) => {
@@ -152,6 +229,13 @@ exports.belgeIndir = onRequest(
       if (!bulundu) return res.status(403).send('Bu dosyaya erişim izni yok');
 
       const meta = await driveJson(`files/${id}`, { fields: 'name, mimeType, size' });
+      // Video izleme bileti: 100 MB altındaki videolar indirilmeden oynatılır
+      if (req.query.bilet === '1') {
+        if (!/^video\//.test(meta.mimeType || '')) return res.status(400).send('Video değil');
+        if (Number(meta.size || 0) >= VIDEO_SINIR) return res.status(413).send('Video çok büyük');
+        res.set('Cache-Control', 'private, no-store');
+        return res.json({ bilet: await biletUret(id) });
+      }
       let r, tur = meta.mimeType, ad = meta.name;
       if (DISA_AKTAR[meta.mimeType]) {
         tur = DISA_AKTAR[meta.mimeType];
