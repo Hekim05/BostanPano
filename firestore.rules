@@ -111,7 +111,8 @@ service cloud.firestore {
     match /duyurular/{did} {
       allow read: if yonetici() || (onayli() && duyuruGorunur(resource.data));
       allow create, update: if yonetici()
-        && request.resource.data.keys().hasOnly(['baslik', 'ozet', 'metin', 'video', 'bostan', 'tarih', 'yorumAcik', 'sabit', 'tepkiler', 'yorumSayisi', 'ekler'])
+        && request.resource.data.keys().hasOnly(['baslik', 'ozet', 'metin', 'video', 'bostan', 'tarih', 'yorumAcik', 'sabit', 'tepkiler', 'yorumSayisi', 'ekler', 'tip'])
+        && (!('tip' in request.resource.data) || request.resource.data.tip in ['duyuru', 'makale'])
         && (!('ekler' in request.resource.data) || (request.resource.data.ekler is list && request.resource.data.ekler.size() <= 12))
         && metin(request.resource.data.baslik, 2, 150)
         && metin(request.resource.data.metin, 0, 60000)

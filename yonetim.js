@@ -242,11 +242,13 @@ let driveListe = null;
 try { adGorunum = localStorage.getItem('bp-ad-gorunum') || 'kart'; } catch (e) {}
 function duyuruBaslat() {
   const k = $('#b-duyuru');
-  k.innerHTML = `<div class="bolum-ust"><h2>Duyurular</h2>
+  k.innerHTML = `<div class="bolum-ust"><h2>Paylaşımlar</h2>
       <div class="btnsatir"><div class="sekmeler"><button data-adgor="kart">▦ Kart</button><button data-adgor="liste">☰ Liste</button></div>
-      <button class="btn ana kucuk" id="dYeni">＋ Yeni duyuru</button></div></div>
+      <button class="btn ana kucuk" id="dYeni">＋ Yeni paylaşım</button></div></div>
     <div class="kart gizli" id="dForm" style="max-width:860px">
-      <div class="bolum-ust" style="margin:0"><h3 style="margin:0" id="dFormBaslik">Yeni duyuru</h3><button class="btn kucuk" id="dKapat">✕ Kapat</button></div>
+      <div class="bolum-ust" style="margin:0"><h3 style="margin:0" id="dFormBaslik">Yeni paylaşım</h3><button class="btn kucuk" id="dKapat">✕ Kapat</button></div>
+      <label>Tür</label>
+      <div class="cipler" id="dTip"><label class="cip"><input type="radio" name="dTip" value="duyuru" checked> 📣 Duyuru</label><label class="cip"><input type="radio" name="dTip" value="makale"> 📖 Makale</label></div>
       <label for="dBaslik">Başlık</label><input id="dBaslik" type="text" maxlength="150">
       <label for="dBostan">Kimler görsün?</label><select id="dBostan">${bostanSecenek('hepsi')}</select>
       <label for="dVideo">Video bağlantısı (isteğe bağlı)</label><input id="dVideo" type="text" placeholder="YouTube veya Google Drive video bağlantısı">
@@ -322,8 +324,9 @@ function formuTemizle() {
   duzenlenen = null;
   ['dBaslik', 'dVideo', 'dMetin'].forEach((i) => ($('#' + i).value = ''));
   $('#dBostan').value = 'hepsi'; $('#dYorum').checked = true; $('#dSabit').checked = false;
+  $$('#dTip input')[0].checked = true;
   seciliEkler.clear(); seciliEkCiz(); $('#dEkListe').classList.add('gizli');
-  $('#dFormBaslik').textContent = 'Yeni duyuru';
+  $('#dFormBaslik').textContent = 'Yeni paylaşım';
   $('#dKaydet').textContent = 'Yayınla'; $('#dVazgec').classList.add('gizli'); $('#dOnizleme').innerHTML = '';
 }
 async function duyuruKaydet() {
@@ -341,6 +344,9 @@ async function duyuruKaydet() {
   // Ek yoksa alan hiç gönderilmez (düzenlemede eski ekleri kaldırmak için boş liste gönderilir)
   const eskiEkVar = duzenlenen && (duyurular.find((x) => x.id === duzenlenen)?.ekler || []).length;
   if (seciliEkler.size || eskiEkVar) veri.ekler = [...seciliEkler.values()];
+  const tip = $$('#dTip input').find((x) => x.checked).value;
+  const eskiTip = duzenlenen && duyurular.find((x) => x.id === duzenlenen)?.tip;
+  if (tip === 'makale' || eskiTip) veri.tip = tip;
   $('#dKaydet').disabled = true;
   try {
     if (duzenlenen) { await updateDoc(doc(db, 'duyurular', duzenlenen), veri); toast('Duyuru güncellendi.'); }
@@ -373,12 +379,12 @@ function duyuruListeCiz() {
   if (adGorunum === 'liste') {
     k.innerHTML = `<div class="satir-liste">${duyurular.map((d) => `<div class="satir ${d.sabit ? 'sabit' : ''}" style="cursor:default;flex-wrap:wrap">
       ${adKapak(d, 'kucuk-gorsel')}
-      <div class="ic"><b>${d.sabit ? '📌 ' : ''}${esc(d.baslik)}</b><small><span class="etiket ${d.bostan}" style="font-size:10.5px;padding:1px 7px">${esc(bostanAdi(d.bostan))}</span> ${tarihYaz(d.tarih)} · ${istat(d)}</small></div>
+      <div class="ic"><b>${d.sabit ? '📌 ' : ''}${d.tip === 'makale' ? '📖 ' : ''}${esc(d.baslik)}</b><small><span class="etiket ${d.bostan}" style="font-size:10.5px;padding:1px 7px">${esc(bostanAdi(d.bostan))}</span> ${tarihYaz(d.tarih)} · ${istat(d)}</small></div>
       <div style="flex-basis:100%">${dugmeler(d)}</div></div>`).join('')}</div>`;
   } else {
     k.innerHTML = `<div class="izgara">${duyurular.map((d) => `<div class="kart ${d.sabit ? 'sabit' : ''}">
       ${adKapak(d, 'kart-gorsel')}
-      <div class="ustsatir">${d.sabit ? '📌' : ''}<span class="etiket ${d.bostan}">${esc(bostanAdi(d.bostan))}</span><span>${tarihYaz(d.tarih)}</span></div>
+      <div class="ustsatir">${d.sabit ? '📌' : ''}<span>${d.tip === 'makale' ? '📖 Makale' : '📣 Duyuru'}</span><span class="etiket ${d.bostan}">${esc(bostanAdi(d.bostan))}</span><span>${tarihYaz(d.tarih)}</span></div>
       <h3>${esc(d.baslik)}</h3>
       <div class="yardim">${istat(d)}</div>
       ${dugmeler(d)}</div>`).join('')}</div>`;
@@ -404,7 +410,8 @@ document.addEventListener('click', async (e) => {
       $('#dBaslik').value = d.baslik; $('#dVideo').value = d.video || ''; $('#dMetin').value = d.metin || '';
       $('#dBostan').value = d.bostan; $('#dYorum').checked = !!d.yorumAcik; $('#dSabit').checked = !!d.sabit;
       seciliEkler.clear(); (d.ekler || []).forEach((f) => seciliEkler.set(f.id, f)); seciliEkCiz();
-      $('#dFormBaslik').textContent = 'Duyuruyu düzenle';
+      $$('#dTip input').forEach((x) => (x.checked = x.value === (d.tip === 'makale' ? 'makale' : 'duyuru')));
+      $('#dFormBaslik').textContent = 'Paylaşımı düzenle';
       $('#dKaydet').textContent = 'Güncelle'; $('#dVazgec').classList.remove('gizli');
       formAc();
     } else if (ds.dsil) {

@@ -272,7 +272,7 @@ exports.duyuruBildir = onDocumentCreated('duyurular/{id}', async (event) => {
   const d = event.data && event.data.data();
   if (!d) return;
   const ozet = (d.ozet || d.metin || '').replace(/\s+/g, ' ').slice(0, 120);
-  await bostanaGonder(d.bostan, 'Yeni duyuru: ' + d.baslik, ozet, 'duyuru');
+  await bostanaGonder(d.bostan, (d.tip === 'makale' ? 'Yeni makale: ' : 'Yeni duyuru: ') + d.baslik, ozet, 'duyuru');
 });
 
 // Yönetici panelinden gelen bildirim istekleri (takvim eklemeleri vb.)
