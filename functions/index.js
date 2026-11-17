@@ -322,15 +322,17 @@ exports.duyuruTemizle = onDocumentDeleted('duyurular/{did}', async (event) => {
 });
 
 // ---------- Bildirimler ----------
-async function gonder(tokenBelgeleri, baslik, govde, yol = '') {
-  const liste = tokenBelgeleri.filter((d) => d.data().token);
+async function gonder(tokenBelgeleri, baslik, govde, yol = '', etiket = '') {
+  // Aynı jetona iki kez gönderme (aynı telefon birden çok kayıtta olabilir)
+  const gorulen = new Set();
+  const liste = tokenBelgeleri.filter((d) => { const t = d.data().token; if (!t || gorulen.has(t)) return false; gorulen.add(t); return true; });
   const adres = UYGULAMA_ADRESI.value() + yol;
   for (let i = 0; i < liste.length; i += 500) {
     const parca = liste.slice(i, i + 500);
     const cevap = await admin.messaging().sendEachForMulticast({
       tokens: parca.map((d) => d.data().token),
       webpush: {
-        notification: { title: baslik, body: govde, icon: UYGULAMA_ADRESI.value() + 'icon-192.png' },
+        notification: { title: baslik, body: govde, icon: UYGULAMA_ADRESI.value() + 'icon-192.png', ...(etiket ? { tag: etiket, renotify: false } : {}) },
         fcmOptions: { link: adres },
       },
     });
@@ -344,27 +346,22 @@ async function gonder(tokenBelgeleri, baslik, govde, yol = '') {
     });
     await Promise.all(silinecek);
   }
+  return liste.map((d) => d.data().token);
 }
 
 // Bir bostanın (ya da 'hepsi' için tüm) kursiyerlerine bildirim
-async function bostanaGonder(bostan, baslik, govde, sekme) {
+async function bostanaGonder(bostan, baslik, govde, sekme, etiket) {
   let q = db.collection('bildirimTokenlari');
   if (bostan !== 'hepsi') q = q.where('bostan', '==', bostan);
   const snap = await q.get();
-  await gonder(snap.docs, baslik, govde, '#' + sekme);
+  return gonder(snap.docs, baslik, govde, '#' + sekme, etiket);
 }
 
 // Paylaşılan her şeyin bildirimi yöneticilere de gider (aynı cihaz kursiyer olarak da kayıtlıysa ikinci kez gönderilmez)
-async function yoneticilereGonder(baslik, govde, sekme, kursiyerBostan) {
+async function yoneticilereGonder(baslik, govde, sekme, gonderilenler, etiket) {
+  const haric = new Set(gonderilenler || []);
   const snap = await db.collection('yoneticiTokenlari').get();
-  let docs = snap.docs;
-  if (kursiyerBostan) {
-    let q = db.collection('bildirimTokenlari');
-    if (kursiyerBostan !== 'hepsi') q = q.where('bostan', '==', kursiyerBostan);
-    const gonderilen = new Set((await q.get()).docs.map((d) => d.data().token));
-    docs = docs.filter((d) => !gonderilen.has(d.data().token));
-  }
-  await gonder(docs, baslik, govde, 'yonetim.html#' + sekme);
+  await gonder(snap.docs.filter((d) => !haric.has(d.data().token)), baslik, govde, 'yonetim.html#' + sekme, etiket);
 }
 
 exports.duyuruBildir = onDocumentCreated('duyurular/{id}', async (event) => {
@@ -372,8 +369,9 @@ exports.duyuruBildir = onDocumentCreated('duyurular/{id}', async (event) => {
   if (!d) return;
   const ozet = (d.ozet || d.metin || '').replace(/\s+/g, ' ').slice(0, 120);
   const baslik = (d.tip === 'makale' ? 'Yeni makale: ' : 'Yeni duyuru: ') + d.baslik;
-  await bostanaGonder(d.bostan, baslik, ozet, 'duyuru');
-  await yoneticilereGonder(baslik, ozet, 'duyuru', d.bostan);
+  const etiket = 'duyuru-' + event.params.id;
+  const giden = await bostanaGonder(d.bostan, baslik, ozet, 'duyuru', etiket);
+  await yoneticilereGonder(baslik, ozet, 'duyuru', giden, etiket);
 });
 
 // Yönetici panelinden gelen bildirim istekleri (takvim eklemeleri vb.)
@@ -381,8 +379,9 @@ exports.bildirimIstegi = onDocumentCreated('bildirimIstekleri/{id}', async (even
   const d = event.data && event.data.data();
   if (!d) return;
   try {
-    await bostanaGonder(d.bostan, d.baslik, d.govde || '', d.sekme || 'duyuru');
-    await yoneticilereGonder(d.baslik, d.govde || '', d.sekme === 'takvim' ? 'takvim' : 'duyuru', d.bostan);
+    const etiket = 'istek-' + event.params.id;
+    const giden = await bostanaGonder(d.bostan, d.baslik, d.govde || '', d.sekme || 'duyuru', etiket);
+    await yoneticilereGonder(d.baslik, d.govde || '', d.sekme === 'takvim' ? 'takvim' : 'duyuru', giden, etiket);
   }
   finally { await event.data.ref.delete(); }
 });
@@ -397,19 +396,21 @@ exports.belgeKontrol = onSchedule({ schedule: '*/15 7-22 * * *', timeZone: 'Euro
   const bilinen = new Set(ilkCalisma ? [] : kayit.data().bilinenler || []);
   const tumu = [];
   const yoneticiyeYeni = [];
+  const gidenTum = [];
   for (const [bolum, k] of Object.entries(yapi)) {
     const yeniler = k.dosyalar.filter((f) => !bilinen.has(f.id));
     k.dosyalar.forEach((f) => tumu.push(f.id));
     if (ilkCalisma || !yeniler.length) continue;
     const bostan = bolum === 'genel' ? 'hepsi' : bolum;
     const baslik = yeniler.length === 1 ? 'Yeni doküman: ' + yeniler[0].name : `${yeniler.length} yeni doküman eklendi`;
-    await bostanaGonder(bostan, baslik, 'Dokümanlar bölümünden indirebilirsiniz.', 'belge');
+    const giden = await bostanaGonder(bostan, baslik, 'Dokümanlar bölümünden indirebilirsiniz.', 'belge', 'belge-' + yeniler[0].id);
+    giden.forEach((t) => gidenTum.push(t));
     yoneticiyeYeni.push(...yeniler);
   }
   // Yöneticilere de tek bildirim
   if (yoneticiyeYeni.length) {
     await yoneticilereGonder(yoneticiyeYeni.length === 1 ? 'Yeni doküman: ' + yoneticiyeYeni[0].name : `${yoneticiyeYeni.length} yeni doküman eklendi`,
-      'Paylaşımlar > Eğitim dokümanları', 'duyuru', null);
+      'Paylaşımlar > Eğitim dokümanları', 'duyuru', gidenTum, 'belge-' + yoneticiyeYeni[0].id);
   }
   await ref.set({ bilinenler: tumu, sonKontrol: FieldValue.serverTimestamp() });
 });
