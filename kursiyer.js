@@ -222,6 +222,7 @@ function ikiliDinle(koleksiyon, ekSorgu, cb) {
 
 // ---------- Duyurular ----------
 const EMOJILER = ['👍', '❤️', '🌱', '👏', '🙏', '😊'];
+const EMOJI_AD = { '👍': 'Beğendim', '❤️': 'Sevdim', '🌱': 'Faydalı', '👏': 'Bravo', '🙏': 'Teşekkürler', '😊': 'Güzel' };
 const acikYorum = new Set();
 const yorumAbone = {};
 
@@ -320,7 +321,11 @@ function duyurulariCiz() {
         <div class="ustsatir">${yeniMi(x) ? '<span class="yeni-etiket">Yeni</span>' : ''}${x.sabit ? '<span>📌</span>' : ''}<span class="etiket ${x.bostan}">${esc(bostanAdi(x.bostan))}</span><span>${tarihYaz(x.tarih)}</span></div>
         <h3>${esc(x.baslik)}</h3>
         ${x.metin ? `<p class="ozet">${esc(duzMetin(x.metin).slice(0, 300))}</p>` : ''}
-        <div class="ustsatir" style="margin:0;justify-content:space-between"><span>${tepkiOzet}${x.yorumAcik ? `  💬 ${Math.max(0, x.yorumSayisi || 0)}` : ''}${(x.ekler || []).length ? '  📎 ' + x.ekler.length : ''}</span><b style="color:var(--yesil-koyu)">Aç ›</b></div>
+        ${tepkiOzet ? `<div class="tepki-ozet">${tepkiOzet}</div>` : ''}
+        <div class="kart-eylem">
+          <span class="eylem">${benimTepkim(x.id) ? benimTepkim(x.id) + ' Tepkiniz' : '😊 Tepki ver'}</span>
+          ${x.yorumAcik ? `<span class="eylem" data-detay="${x.id}" data-yorumaodak="1">💬 Yorum${x.yorumSayisi > 0 ? ' (' + x.yorumSayisi + ')' : ' yaz'}</span>` : ''}
+          <b>Aç ›</b></div>
       </article>`;
     }).join('')}</div>`;
   }
@@ -341,7 +346,12 @@ function detayCiz(d) {
       ${eklerHtml(d.ekler)}
       ${d.metin ? `<div class="makale">${makaleHtml(d.metin)}</div>` : ''}
       ${d.metin ? `<div class="btnsatir"><button class="btn kucuk" data-dinle="${d.id}">🔊 Dinle</button></div>` : ''}
-      <div class="tepkiler">${EMOJILER.map((em) => `<button class="tepki ${benim === em ? 'secili' : ''}" ${onizleme ? 'disabled' : ''} data-tepki="${em}" data-did="${d.id}" aria-label="${em} tepkisi">${em}${say[em] > 0 ? `<small>${say[em]}</small>` : ''}</button>`).join('')}</div>
+      <div class="tepki-panel">
+        <div class="tepki-baslik">${benim ? 'Tepkiniz: ' + benim + ' ' + EMOJI_AD[benim] + ' <small>(değiştirmek için başka birine, kaldırmak için aynısına dokunun)</small>' : 'Bu paylaşıma tepki verin'}</div>
+        <div class="tepkiler">${EMOJILER.map((em) => `<button class="tepki ${benim === em ? 'secili' : ''}" ${onizleme ? 'disabled' : ''} data-tepki="${em}" data-did="${d.id}" aria-pressed="${benim === em}" aria-label="${EMOJI_AD[em]}">
+          <span class="em">${em}</span><span class="ad">${EMOJI_AD[em]}</span>${say[em] > 0 ? `<span class="sayi">${say[em]}</span>` : ''}</button>`).join('')}</div>
+        ${d.yorumAcik && !onizleme ? `<button class="btn yorum-yaz" data-yorumodak="${d.id}">💬 Yorum yaz</button>` : ''}
+      </div>
       ${d.yorumAcik ? `<div class="yorumlar" id="y-${d.id}"><b style="font-size:14px">💬 Yorumlar (${Math.max(0, d.yorumSayisi || 0)})</b><div class="yliste"></div>
           ${onizleme ? '' : `<label for="yt-${d.id}">Yorumunuz <small style="font-weight:400;color:var(--soluk)">(${esc(uye.takmaAd)} olarak)</small></label>
           <textarea id="yt-${d.id}" data-yorum="${d.id}" maxlength="500" style="min-height:70px">${esc(taslak)}</textarea>
@@ -381,7 +391,8 @@ document.addEventListener('click', async (e) => {
   const ds = b.dataset;
   if (ds.alt) { altBolum = ds.alt; duyurulariCiz(); history.replaceState(null, '', '#' + (ds.alt === 'belge' ? 'belge' : 'duyuru')); window.scrollTo(0, 0); }
   else if ('anageri' in ds) { altBolum = null; duyurulariCiz(); rozetleriGuncelle(); window.scrollTo(0, 0); }
-  else if (ds.detay) { duyuruAc(ds.detay); }
+  else if (ds.yorumodak) { const t = document.getElementById('yt-' + ds.yorumodak); if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => t.focus(), 350); } }
+  else if (ds.detay) { duyuruAc(ds.detay); if (ds.yorumaodak) setTimeout(() => { const t = document.getElementById('yt-' + ds.detay); if (t) { t.scrollIntoView({ block: 'center' }); t.focus(); } }, 400); }
   else if ('geri' in ds) { acikDuyuru = null; duyurulariCiz(); window.scrollTo(0, 0); }
   else if (ds.gorunum) { gorunum = ds.gorunum; try { localStorage.setItem('bp-gorunum', gorunum); } catch (er) {} duyurulariCiz(); }
   else if (ds.dinle) { const d = duyurular.find((x) => x.id === ds.dinle); sesliOku(d.baslik + '. ' + d.metin, b); }

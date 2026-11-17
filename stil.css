@@ -403,3 +403,22 @@ input[type=text], input[type=date], input[type=time], input[type=email], input[t
 @keyframes bpKay { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
 .indirme-kutu .durum { margin-top: 10px; font-size: 15px; }
 .indirme-kutu .yardim { margin: 12px 0 0; }
+
+/* Tepki ve yorum: büyük, etiketli, kolay seçilir düğmeler */
+.tepki-panel { margin-top: 16px; padding: 14px; background: var(--yesil-acik, #EAF3DE); border-radius: 14px; }
+.tepki-baslik { font-weight: 700; font-size: 16px; margin-bottom: 10px; }
+.tepki-baslik small { font-weight: 400; color: var(--soluk); font-size: 13px; }
+.tepki-panel .tepkiler { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; }
+.tepki-panel .tepki { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-height: 72px; padding: 8px 4px; border: 2px solid transparent; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); transition: transform .12s, border-color .12s; }
+.tepki-panel .tepki .em { font-size: 30px; line-height: 1; }
+.tepki-panel .tepki .ad { font-size: 13px; color: #3d4a40; }
+.tepki-panel .tepki .sayi { position: absolute; top: 4px; right: 6px; font-size: 12px; font-weight: 700; color: var(--yesil-koyu, #27500A); background: var(--yesil-acik, #EAF3DE); border-radius: 999px; padding: 0 6px; }
+.tepki-panel .tepki:active { transform: scale(.94); }
+.tepki-panel .tepki.secili { border-color: var(--yesil, #3B6D11); background: #F4F9EC; }
+.tepki-panel .tepki.secili .ad { font-weight: 700; color: var(--yesil-koyu, #27500A); }
+.btn.yorum-yaz { width: 100%; margin-top: 10px; min-height: 48px; font-size: 16px; font-weight: 700; background: #fff; }
+.tepki-ozet { font-size: 14px; color: var(--soluk); margin-top: 6px; }
+.kart-eylem { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--cizgi); }
+.kart-eylem .eylem { padding: 7px 12px; border-radius: 999px; background: var(--yesil-acik, #EAF3DE); font-size: 14px; font-weight: 600; color: var(--yesil-koyu, #27500A); }
+.kart-eylem b { margin-left: auto; color: var(--yesil-koyu, #27500A); }
