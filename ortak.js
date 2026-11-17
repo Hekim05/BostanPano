@@ -4,7 +4,7 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-aut
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
-export const APP_VERSION = '2026.11.14-20';
+export const APP_VERSION = '2026.11.17-1';
 export const AYAR = self.BP_AYAR || {};
 export const ayarEksik = !AYAR.firebase || !AYAR.firebase.apiKey || !AYAR.firebase.projectId;
 
@@ -162,12 +162,56 @@ export function videoKutusu(src, ad) {
   d.onclick = (e) => { if (e.target === d || e.target.closest('.kapat')) { v.pause(); v.removeAttribute('src'); v.load(); d.remove(); } };
   document.body.appendChild(d);
 }
+// İndirme sırasında görünen pencere: dosya adı, ilerleme, bitti bilgisi
+function indirmeKutusu(ad) {
+  let d = null, kapandi = false;
+  const mb = (b) => (b / 1048576).toFixed(1).replace('.', ',') + ' MB';
+  return {
+    goster() {
+      if (d || kapandi) return;
+      d = document.createElement('div');
+      d.className = 'isik indirme';
+      d.innerHTML = `<div class="indirme-kutu" role="status" aria-live="polite">
+        <b>Dosya indiriliyor</b><div class="ad">${esc(ad || '')}</div>
+        <div class="cubuk"><span></span></div><div class="durum">Bağlanılıyor…</div>
+        <p class="yardim">Büyük sunumlar bir dakika kadar sürebilir. Bu pencereyi kapatmayın.</p></div>`;
+      document.body.appendChild(d);
+    },
+    ilerle(alinan, toplam) {
+      if (!d) return;
+      const c = d.querySelector('.cubuk span'), s = d.querySelector('.durum');
+      if (toplam) { const y = Math.min(100, Math.round(alinan * 100 / toplam)); c.style.width = y + '%'; s.textContent = `%${y} · ${mb(alinan)} / ${mb(toplam)}`; }
+      else { c.parentNode.classList.add('belirsiz'); s.textContent = mb(alinan) + ' indirildi'; }
+    },
+    bitti() {
+      if (!d) return;
+      d.querySelector('.cubuk span').style.width = '100%';
+      d.querySelector('b').textContent = '✓ İndirildi';
+      d.querySelector('.durum').textContent = 'Dosya telefonunuzun İndirilenler klasöründe; bildirim çubuğundan da açabilirsiniz.';
+      d.querySelector('.yardim').remove();
+      d.onclick = () => this.kapat();
+    },
+    kapat() { kapandi = true; if (d) { d.remove(); d = null; } },
+  };
+}
 export async function belgeAc(id, ad, tur) {
   const indir = async (ac) => {
     const t = await auth.currentUser.getIdToken();
     const r = await fetch(fnAdres('belgeIndir') + `?id=${encodeURIComponent(id)}`, { headers: { Authorization: 'Bearer ' + t } });
     if (!r.ok) throw new Error(r.status);
-    const blob = await r.blob();
+    // İndirme ilerlemesi: dosya büyükse kullanıcı beklediğini görsün
+    const toplam = Number(r.headers.get('X-Dosya-Boyutu') || r.headers.get('Content-Length')) || 0;
+    let blob;
+    if (r.body && r.body.getReader) {
+      const okuyucu = r.body.getReader(); const parcalar = []; let alinan = 0;
+      for (;;) {
+        const { done, value } = await okuyucu.read();
+        if (done) break;
+        parcalar.push(value); alinan += value.length;
+        bekleme.ilerle(alinan, toplam);
+      }
+      blob = new Blob(parcalar, { type: r.headers.get('Content-Type') || '' });
+    } else blob = await r.blob();
     const cd = r.headers.get('Content-Disposition') || '';
     const m = cd.match(/filename\*=UTF-8''([^;]+)/);
     const dosyaAdi = m ? decodeURIComponent(m[1]) : ad;
@@ -177,6 +221,7 @@ export async function belgeAc(id, ad, tur) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
+  const bekleme = indirmeKutusu(ad);
   try {
     if (/^video\//.test(tur || '')) {
       // 100 MB altındaki videolar indirilmeden oynatılır
@@ -187,8 +232,11 @@ export async function belgeAc(id, ad, tur) {
       toast('Bu video 100 MB’tan büyük olduğu için indiriliyor…', 5000);
     }
     if (/^image\//.test(tur || '')) { const u = await kucukResim(id, 1600); isikKutusu(u, ad, () => indir(false).catch(() => toast('İndirilemedi.'))); return; }
+    bekleme.goster();
     await indir(true);
-  } catch (e) { toast('Dosya açılamadı.'); }
+    bekleme.bitti();
+  } catch (e) { bekleme.kapat(); toast('Dosya açılamadı.'); }
+  finally { setTimeout(() => bekleme.kapat(), 4000); }
 }
 export function turBilgisi(m, ad) {
   m = m || '';

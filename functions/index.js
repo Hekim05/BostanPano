@@ -249,6 +249,8 @@ exports.belgeIndir = onRequest(
       res.set('Content-Type', tur);
       res.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(ad)}`);
       res.set('Cache-Control', 'private, no-store');
+      // Boyut biliniyorsa uygulama indirme yüzdesini gösterebilsin
+      if (!DISA_AKTAR[meta.mimeType] && meta.size) { res.set('X-Dosya-Boyutu', String(meta.size)); res.set('Access-Control-Expose-Headers', 'Content-Disposition, X-Dosya-Boyutu'); }
       Readable.fromWeb(r.body).pipe(res);
     } catch (e) {
       const kod = e instanceof HttpsError ? 403 : 500;

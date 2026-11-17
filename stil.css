@@ -391,3 +391,15 @@ input[type=text], input[type=date], input[type=time], input[type=email], input[t
 .isik img { background: #fff; }
 
 .isik video { max-width: 100%; max-height: 82vh; border-radius: 10px; background: #000; }
+
+/* İndirme penceresi */
+.isik.indirme { cursor: default; }
+.indirme-kutu { background: #fff; color: #1f2a22; border-radius: 16px; padding: 22px 20px; width: min(360px, 100%); text-align: center; }
+.indirme-kutu b { font-size: 19px; display: block; }
+.indirme-kutu .ad { margin: 6px 0 14px; font-size: 15px; color: #5d6b63; word-break: break-word; }
+.indirme-kutu .cubuk { height: 10px; background: #e3e8e2; border-radius: 6px; overflow: hidden; }
+.indirme-kutu .cubuk span { display: block; height: 100%; width: 3%; background: #27500A; transition: width .2s; }
+.indirme-kutu .cubuk.belirsiz span { width: 35%; animation: bpKay 1.2s infinite ease-in-out; }
+@keyframes bpKay { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+.indirme-kutu .durum { margin-top: 10px; font-size: 15px; }
+.indirme-kutu .yardim { margin: 12px 0 0; }
