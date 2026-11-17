@@ -376,6 +376,7 @@ exports.belgeKontrol = onSchedule({ schedule: '5 7-22 * * *', timeZone: 'Europe/
   const ilkCalisma = !kayit.exists;
   const bilinen = new Set(ilkCalisma ? [] : kayit.data().bilinenler || []);
   const tumu = [];
+  const yoneticiyeYeni = [];
   for (const [bolum, k] of Object.entries(yapi)) {
     const yeniler = k.dosyalar.filter((f) => !bilinen.has(f.id));
     k.dosyalar.forEach((f) => tumu.push(f.id));
@@ -383,6 +384,13 @@ exports.belgeKontrol = onSchedule({ schedule: '5 7-22 * * *', timeZone: 'Europe/
     const bostan = bolum === 'genel' ? 'hepsi' : bolum;
     const baslik = yeniler.length === 1 ? 'Yeni doküman: ' + yeniler[0].name : `${yeniler.length} yeni doküman eklendi`;
     await bostanaGonder(bostan, baslik, 'Dokümanlar bölümünden indirebilirsiniz.', 'belge');
+    yoneticiyeYeni.push(...yeniler);
+  }
+  // Yöneticilere de tek bildirim
+  if (yoneticiyeYeni.length) {
+    const snap = await db.collection('yoneticiTokenlari').get();
+    await gonder(snap.docs, yoneticiyeYeni.length === 1 ? 'Yeni doküman: ' + yoneticiyeYeni[0].name : `${yoneticiyeYeni.length} yeni doküman eklendi`,
+      'Paylaşımlar > Eğitim dokümanları', 'yonetim.html#duyuru');
   }
   await ref.set({ bilinenler: tumu, sonKontrol: FieldValue.serverTimestamp() });
 });
