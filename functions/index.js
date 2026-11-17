@@ -354,23 +354,41 @@ async function bostanaGonder(bostan, baslik, govde, sekme) {
   await gonder(snap.docs, baslik, govde, '#' + sekme);
 }
 
+// Paylaşılan her şeyin bildirimi yöneticilere de gider (aynı cihaz kursiyer olarak da kayıtlıysa ikinci kez gönderilmez)
+async function yoneticilereGonder(baslik, govde, sekme, kursiyerBostan) {
+  const snap = await db.collection('yoneticiTokenlari').get();
+  let docs = snap.docs;
+  if (kursiyerBostan) {
+    let q = db.collection('bildirimTokenlari');
+    if (kursiyerBostan !== 'hepsi') q = q.where('bostan', '==', kursiyerBostan);
+    const gonderilen = new Set((await q.get()).docs.map((d) => d.data().token));
+    docs = docs.filter((d) => !gonderilen.has(d.data().token));
+  }
+  await gonder(docs, baslik, govde, 'yonetim.html#' + sekme);
+}
+
 exports.duyuruBildir = onDocumentCreated('duyurular/{id}', async (event) => {
   const d = event.data && event.data.data();
   if (!d) return;
   const ozet = (d.ozet || d.metin || '').replace(/\s+/g, ' ').slice(0, 120);
-  await bostanaGonder(d.bostan, (d.tip === 'makale' ? 'Yeni makale: ' : 'Yeni duyuru: ') + d.baslik, ozet, 'duyuru');
+  const baslik = (d.tip === 'makale' ? 'Yeni makale: ' : 'Yeni duyuru: ') + d.baslik;
+  await bostanaGonder(d.bostan, baslik, ozet, 'duyuru');
+  await yoneticilereGonder(baslik, ozet, 'duyuru', d.bostan);
 });
 
 // Yönetici panelinden gelen bildirim istekleri (takvim eklemeleri vb.)
 exports.bildirimIstegi = onDocumentCreated('bildirimIstekleri/{id}', async (event) => {
   const d = event.data && event.data.data();
   if (!d) return;
-  try { await bostanaGonder(d.bostan, d.baslik, d.govde || '', d.sekme || 'duyuru'); }
+  try {
+    await bostanaGonder(d.bostan, d.baslik, d.govde || '', d.sekme || 'duyuru');
+    await yoneticilereGonder(d.baslik, d.govde || '', d.sekme === 'takvim' ? 'takvim' : 'duyuru', d.bostan);
+  }
   finally { await event.data.ref.delete(); }
 });
 
-// Drive'a yeni doküman eklendiğinde ilgili bostana bildirim (07:00–22:00 arası saatte bir)
-exports.belgeKontrol = onSchedule({ schedule: '5 7-22 * * *', timeZone: 'Europe/Istanbul' }, async () => {
+// Drive'a yeni doküman eklendiğinde ilgili bostana bildirim (07:00–22:00 arası 15 dakikada bir)
+exports.belgeKontrol = onSchedule({ schedule: '*/15 7-22 * * *', timeZone: 'Europe/Istanbul' }, async () => {
   onbellek = { zaman: 0, veri: null };
   const yapi = await klasorYapisi();
   const ref = db.doc('ayarlar/drive');
@@ -390,9 +408,8 @@ exports.belgeKontrol = onSchedule({ schedule: '5 7-22 * * *', timeZone: 'Europe/
   }
   // Yöneticilere de tek bildirim
   if (yoneticiyeYeni.length) {
-    const snap = await db.collection('yoneticiTokenlari').get();
-    await gonder(snap.docs, yoneticiyeYeni.length === 1 ? 'Yeni doküman: ' + yoneticiyeYeni[0].name : `${yoneticiyeYeni.length} yeni doküman eklendi`,
-      'Paylaşımlar > Eğitim dokümanları', 'yonetim.html#duyuru');
+    await yoneticilereGonder(yoneticiyeYeni.length === 1 ? 'Yeni doküman: ' + yoneticiyeYeni[0].name : `${yoneticiyeYeni.length} yeni doküman eklendi`,
+      'Paylaşımlar > Eğitim dokümanları', 'duyuru', null);
   }
   await ref.set({ bilinenler: tumu, sonKontrol: FieldValue.serverTimestamp() });
 });
