@@ -316,6 +316,33 @@ exports.yorumSay = onDocumentWritten('duyurular/{did}/yorumlar/{yid}', async (ev
     .update({ yorumSayisi: FieldValue.increment(fark) }).catch(() => {});
 });
 
+// Yeni yorum: o paylaşımı takip eden kursiyerlere ve yorum bildirimini açmış yöneticilere
+exports.yorumBildir = onDocumentCreated('duyurular/{did}/yorumlar/{yid}', async (event) => {
+  const y = event.data && event.data.data();
+  if (!y) return;
+  const ds = await db.doc(`duyurular/${event.params.did}`).get();
+  if (!ds.exists) return;
+  const d = ds.data();
+  const baslik = 'Yeni yorum: ' + String(d.baslik || '').slice(0, 60);
+  const govde = `${y.takmaAd || 'Kursiyer'}: ${String(y.metin || '').slice(0, 120)}`;
+  const etiket = 'yorum-' + event.params.yid;
+  // Kursiyerler (yorumu yazan hariç)
+  const takip = await db.collection(`duyurular/${event.params.did}/takipciler`).get();
+  const kimler = takip.docs.map((t) => t.id).filter((id) => id !== y.uid);
+  const tokenDocs = [];
+  for (let i = 0; i < kimler.length; i += 100) {
+    const parca = await db.getAll(...kimler.slice(i, i + 100).map((id) => db.doc(`bildirimTokenlari/${id}`)));
+    parca.forEach((p) => { if (p.exists) tokenDocs.push(p); });
+  }
+  const giden = await gonder(tokenDocs, baslik, govde, '#duyuru', etiket);
+  // Yöneticiler (tercihini açanlar)
+  const ter = await db.collection('yoneticiTercihleri').where('yorumBildirim', '==', true).get();
+  if (ter.empty) return;
+  const yon = await db.getAll(...ter.docs.map((t) => db.doc(`yoneticiTokenlari/${t.id}`)));
+  const haric = new Set(giden || []);
+  await gonder(yon.filter((p) => p.exists && !haric.has(p.data().token)), baslik, govde, 'yonetim.html#duyuru', etiket);
+});
+
 // Duyuru silinince yorum ve tepkileri de sil
 exports.duyuruTemizle = onDocumentDeleted('duyurular/{did}', async (event) => {
   await db.recursiveDelete(db.doc(`duyurular/${event.params.did}`));

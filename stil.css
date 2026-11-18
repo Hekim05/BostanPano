@@ -422,3 +422,6 @@ input[type=text], input[type=date], input[type=time], input[type=email], input[t
 .kart-eylem { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--cizgi); }
 .kart-eylem .eylem { padding: 7px 12px; border-radius: 999px; background: var(--yesil-acik, #EAF3DE); font-size: 14px; font-weight: 600; color: var(--yesil-koyu, #27500A); }
 .kart-eylem b { margin-left: auto; color: var(--yesil-koyu, #27500A); }
+
+.btn.takip { width: 100%; margin-top: 8px; min-height: 44px; font-size: 15px; background: transparent; border-style: dashed; }
+.btn.takip.acik { background: #fff; border-style: solid; border-color: var(--yesil, #3B6D11); color: var(--yesil-koyu, #27500A); font-weight: 700; }

@@ -226,6 +226,27 @@ const EMOJI_AD = { '👍': 'Beğendim', '❤️': 'Sevdim', '🌱': 'Faydalı', 
 const acikYorum = new Set();
 const yorumAbone = {};
 
+// Yorum takibi: kursiyer isterse o paylaşıma gelen yeni yorumlarda bildirim alır
+const takipDurumu = new Map();
+function takipte(did) {
+  if (!takipDurumu.has(did) && !onizleme) {
+    takipDurumu.set(did, false);
+    getDoc(doc(db, 'duyurular', did, 'takipciler', uid)).then((s) => { takipDurumu.set(did, s.exists()); takipDugmesi(did); }).catch(() => {});
+  }
+  return !!takipDurumu.get(did);
+}
+function takipDugmesi(did) {
+  const b = document.getElementById('tk-' + did);
+  if (!b) return;
+  const a = !!takipDurumu.get(did);
+  b.classList.toggle('acik', a);
+  b.textContent = a ? '🔔 Yeni yorumlarda bildirim açık' : '🔕 Yeni yorumlarda bana bildir';
+}
+async function takipAyarla(did, ac) {
+  const ref = doc(db, 'duyurular', did, 'takipciler', uid);
+  if (ac) await setDoc(ref, { tarih: serverTimestamp() }); else await deleteDoc(ref);
+  takipDurumu.set(did, ac); takipDugmesi(did);
+}
 function benimTepkim(did) { try { return localStorage.getItem('bp-t-' + did) || ''; } catch (e) { return ''; } }
 function tepkiKaydet(did, em) { try { em ? localStorage.setItem('bp-t-' + did, em) : localStorage.removeItem('bp-t-' + did); } catch (e) {} }
 
@@ -350,7 +371,8 @@ function detayCiz(d) {
         <div class="tepki-baslik">${benim ? 'Tepkiniz: ' + benim + ' ' + EMOJI_AD[benim] + ' <small>(değiştirmek için başka birine, kaldırmak için aynısına dokunun)</small>' : 'Bu paylaşıma tepki verin'}</div>
         <div class="tepkiler">${EMOJILER.map((em) => `<button class="tepki ${benim === em ? 'secili' : ''}" ${onizleme ? 'disabled' : ''} data-tepki="${em}" data-did="${d.id}" aria-pressed="${benim === em}" aria-label="${EMOJI_AD[em]}">
           <span class="em">${em}</span><span class="ad">${EMOJI_AD[em]}</span>${say[em] > 0 ? `<span class="sayi">${say[em]}</span>` : ''}</button>`).join('')}</div>
-        ${d.yorumAcik && !onizleme ? `<button class="btn yorum-yaz" data-yorumodak="${d.id}">💬 Yorum yaz</button>` : ''}
+        ${d.yorumAcik && !onizleme ? `<button class="btn yorum-yaz" data-yorumodak="${d.id}">💬 Yorum yaz</button>
+          <button class="btn takip ${takipte(d.id) ? 'acik' : ''}" data-takip="${d.id}" id="tk-${d.id}">${takipte(d.id) ? '🔔 Yeni yorumlarda bildirim açık' : '🔕 Yeni yorumlarda bana bildir'}</button>` : ''}
       </div>
       ${d.yorumAcik ? `<div class="yorumlar" id="y-${d.id}"><b style="font-size:14px">💬 Yorumlar (${Math.max(0, d.yorumSayisi || 0)})</b><div class="yliste"></div>
           ${onizleme ? '' : `<label for="yt-${d.id}">Yorumunuz <small style="font-weight:400;color:var(--soluk)">(${esc(uye.takmaAd)} olarak)</small></label>
@@ -419,7 +441,20 @@ document.addEventListener('click', async (e) => {
       batch.update(doc(db, 'uyeler', uid), { sonYazma: serverTimestamp() });
       await batch.commit();
       t.value = '';
+      // Yorum yazan, o paylaşımın yeni yorumlarını kendiliğinden takip eder
+      if (!takipDurumu.get(did)) takipAyarla(did, true).catch(() => {});
     } catch (er) { toast('Gönderilemedi. İki yazı arasında 20 saniye bekleyin.'); }
+    b.disabled = false;
+  } else if (ds.takip) {
+    const did = ds.takip, ac = !takipDurumu.get(did);
+    b.disabled = true;
+    try {
+      await takipAyarla(did, ac);
+      if (ac) {
+        if (!('Notification' in window) || Notification.permission !== 'granted') { toast('Bildirim alabilmek için izin vermeniz gerekiyor.'); await bildirimAc(); }
+        else toast('Bu paylaşıma yeni yorum gelince bildirim alacaksınız.');
+      } else toast('Bu paylaşımın yorum bildirimleri kapatıldı.');
+    } catch (er) { toast('Ayarlanamadı.'); }
     b.disabled = false;
   } else if (ds.yorumsil) {
     if (!confirm('Yorumunuz silinsin mi?')) return;

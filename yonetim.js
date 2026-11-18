@@ -869,7 +869,7 @@ function ayarBaslat() {
         <button id="qrAc" style="border:0;background:none;padding:0;cursor:pointer;display:block;margin:0 auto" aria-label="Kare kodu büyüt"><img src="qr.png" alt="Bostan Pano kare kodu" style="width:160px;border-radius:8px;border:1px solid var(--cizgi);display:block"></button>
         <p class="yardim" style="text-align:center">Büyütmek için dokunun. Kursiyer telefonunun kamerasıyla okutunca uygulama açılır; ardından bostan kodunu girer.</p>
         <div class="btnsatir" style="justify-content:center;margin-top:8px"><a class="btn kucuk" href="qr.png" download="Bostan_Pano_Kare_Kod.png">Resmi indir</a></div></div>
-            <div class="kart"><h3 style="margin-top:0">📱 Bu cihaz</h3><div class="btnsatir"><button class="btn" id="yBildirim">🔔 Yeni soru bildirimlerini aç</button><button class="btn" id="cikisYap">Çıkış yap</button></div></div>
+            <div class="kart"><h3 style="margin-top:0">📱 Bu cihaz</h3><div class="btnsatir"><button class="btn" id="yBildirim">🔔 Bildirimleri aç</button><button class="btn" id="yYorumBil">💬 Yorum bildirimleri: …</button><button class="btn" id="cikisYap">Çıkış yap</button></div></div>
     </div>`;
   $('#qrAc').onclick = () => isikKutusu('qr.png', 'Bostan Pano kare kodu', () => { const l = document.createElement('a'); l.href = 'qr.png'; l.download = 'Bostan_Pano_Kare_Kod.png'; l.click(); });
   kullanimCiz();
@@ -899,6 +899,17 @@ function ayarBaslat() {
   });
   $('#cikisYap').onclick = () => signOut(auth);
   $('#yBildirim').onclick = yoneticiBildirim;
+  yorumTercihCiz();
+  $('#yYorumBil').onclick = async () => {
+    const ref = doc(db, 'yoneticiTercihleri', ben.uid);
+    try {
+      const yeni = !yorumTercih;
+      await setDoc(ref, { yorumBildirim: yeni });
+      yorumTercih = yeni; yorumTercihCiz();
+      toast(yeni ? 'Kursiyer yorumlarında bildirim alacaksınız.' : 'Yorum bildirimleri kapatıldı.');
+      if (yeni) yoneticiBildirim(Notification.permission === 'granted');
+    } catch (e) { toast('Ayarlanamadı.'); }
+  };
 }
 async function yoneticiGuncelle(liste) {
   try {
@@ -907,6 +918,16 @@ async function yoneticiGuncelle(liste) {
   } catch (e) { toast('Güncellenemedi.'); }
 }
 let onDinleyici = false;
+let yorumTercih = null;
+async function yorumTercihCiz() {
+  const b = $('#yYorumBil');
+  if (!b) return;
+  if (yorumTercih === null) {
+    try { const s = await getDoc(doc(db, 'yoneticiTercihleri', ben.uid)); yorumTercih = s.exists() && s.data().yorumBildirim === true; } catch (e) { yorumTercih = false; }
+  }
+  b.textContent = yorumTercih ? '💬 Yorum bildirimleri: açık' : '💬 Yorum bildirimleri: kapalı';
+  b.classList.toggle('ana', yorumTercih);
+}
 async function yoneticiBildirim(sessiz) {
   sessiz = sessiz === true;
   if (!AYAR.vapidKey) return sessiz || toast('Bildirim anahtarı (vapidKey) config.js içinde tanımlı değil.');
@@ -919,6 +940,6 @@ async function yoneticiBildirim(sessiz) {
     const token = await getToken(getMessaging(), { vapidKey: AYAR.vapidKey, serviceWorkerRegistration: reg });
     await setDoc(doc(db, 'yoneticiTokenlari', ben.uid), { token, email: ben.email, tarih: serverTimestamp() });
     if (!onDinleyici) { onDinleyici = true; onMessage(getMessaging(), (p) => acikkenGoster(reg, p)); }
-    if (!sessiz) toast('Yeni soru bildirimleri açıldı.');
+    if (!sessiz) toast('Bildirimler açıldı.');
   } catch (e) { if (!sessiz) toast('Bildirim açılamadı.'); }
 }
